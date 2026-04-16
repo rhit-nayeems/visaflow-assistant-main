@@ -1,15 +1,18 @@
-# AGENTS.md
+﻿# AGENTS.md
 
 ## Project
+
 VisaFlow is a CPT workflow platform for international students.
 
 This is a workflow/case-management product, not:
+
 - a generic to-do app
 - a generic document uploader
 - a legal advice chatbot
 - an unrestricted AI assistant
 
 The core value is structured workflow orchestration:
+
 - CPT case tracking
 - school-template-based requirements
 - document handling
@@ -19,19 +22,23 @@ The core value is structured workflow orchestration:
 - change-triggered revalidation
 
 ## Read first
+
 Before making changes, always read:
+
 1. SPEC.md
 2. ROADMAP.md
 3. TASKS.md
 
 Do not start coding until you understand:
+
 - the product scope
 - what is in v1
 - what is out of scope
 - the highest-priority unchecked tasks
 
 ## Working style
-- Preserve the existing Lovable-generated UI structure unless a task explicitly requires UI changes.
+
+- Preserve the existing existing UI structure unless a task explicitly requires UI changes.
 - Prefer small, modular, high-confidence changes.
 - Keep business logic out of presentational components.
 - Do not redesign the product without a clear task asking for it.
@@ -41,7 +48,9 @@ Do not start coding until you understand:
 - Keep deterministic rules separate from any future AI-assisted logic.
 
 ## Architecture expectations
+
 The app should evolve toward this structure:
+
 - UI layer: pages, forms, presentational components
 - Application layer: case workflow, requirement evaluation, transitions
 - Data layer: Supabase tables, queries, storage
@@ -51,7 +60,9 @@ Business logic should be centralized and reusable.
 Avoid duplicating requirement logic inside multiple UI components.
 
 ## Product expectations
+
 For v1:
+
 - CPT only
 - one school template initially
 - deterministic requirement evaluation
@@ -60,6 +71,7 @@ For v1:
 - change-triggered revalidation for approval-sensitive fields
 
 Out of scope for v1:
+
 - OPT
 - STEM OPT
 - SEVIS integration
@@ -71,6 +83,7 @@ Out of scope for v1:
 - broad chatbot behavior
 
 ## Core business rules
+
 - A case becomes `ready_for_submission` only when all blocker requirements are satisfied.
 - Missing required offer-letter fields create blocker requirements.
 - Warnings and blockers are separate.
@@ -79,19 +92,23 @@ Out of scope for v1:
 - Every important case update must create timeline and/or audit history where appropriate.
 
 ## Commands
+
 Update these if the repo uses different scripts.
 
 Typical commands:
+
 - install: `npm install`
 - dev: `npm run dev`
 - build: `npm run build`
 - lint: `npm run lint`
 - test: `npm test`
 
-If backend or Supabase local workflows exist, detect and use the repo’s actual commands instead of assuming.
+If backend or Supabase local workflows exist, detect and use the repoâ€™s actual commands instead of assuming.
 
 ## Definition of done
+
 A task is done only if:
+
 1. The code compiles or builds successfully.
 2. The relevant flow works.
 3. Existing behavior is not broken.
@@ -101,7 +118,9 @@ A task is done only if:
 7. A brief summary of what changed is provided.
 
 ## When asked to implement work
+
 Follow this order:
+
 1. Understand current repo state
 2. Compare repo state to SPEC.md and TASKS.md
 3. Implement the smallest correct increment

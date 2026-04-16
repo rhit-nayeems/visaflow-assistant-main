@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Link, useParams } from "@tanstack/react-router";
+﻿import { useCallback, useEffect, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -11,12 +11,20 @@ import { AlertBanner } from "@/components/shared/AlertBanner";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { TimelineItem } from "@/components/shared/TimelineItem";
 import {
-  ArrowLeft, FileText, Loader2, Upload, CheckCircle, AlertCircle,
-  Clock, Edit, MessageSquare, History, Shield,
+  ArrowLeft,
+  FileText,
+  Loader2,
+  CheckCircle,
+  AlertCircle,
+  Clock,
+  MessageSquare,
+  History,
+  Shield,
 } from "lucide-react";
 import type { Tables } from "@/integrations/supabase/types";
 import type { CaseStatusKey } from "@/lib/constants";
 import { REQUIREMENT_STATUSES } from "@/lib/constants";
+import { getCaseNextRecommendedAction, summarizeRequirementRows } from "@/lib/cases/requirements";
 import { formatDistanceToNow } from "date-fns";
 
 type Case = Tables<"cases">;
@@ -42,14 +50,30 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
   const [newNote, setNewNote] = useState("");
   const [noteLoading, setNoteLoading] = useState(false);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     const [caseRes, docsRes, reqsRes, tlRes, auditRes, notesRes] = await Promise.all([
       supabase.from("cases").select("*").eq("id", caseId).single(),
-      supabase.from("documents").select("*").eq("case_id", caseId).order("created_at", { ascending: false }),
+      supabase
+        .from("documents")
+        .select("*")
+        .eq("case_id", caseId)
+        .order("created_at", { ascending: false }),
       supabase.from("case_requirements").select("*").eq("case_id", caseId).order("severity"),
-      supabase.from("case_timeline_events").select("*").eq("case_id", caseId).order("created_at", { ascending: false }),
-      supabase.from("audit_logs").select("*").eq("case_id", caseId).order("created_at", { ascending: false }),
-      supabase.from("case_notes").select("*").eq("case_id", caseId).order("created_at", { ascending: false }),
+      supabase
+        .from("case_timeline_events")
+        .select("*")
+        .eq("case_id", caseId)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("audit_logs")
+        .select("*")
+        .eq("case_id", caseId)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("case_notes")
+        .select("*")
+        .eq("case_id", caseId)
+        .order("created_at", { ascending: false }),
     ]);
     setCaseData(caseRes.data);
     setDocuments(docsRes.data || []);
@@ -58,9 +82,11 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
     setAuditLogs(auditRes.data || []);
     setNotes(notesRes.data || []);
     setLoading(false);
-  };
+  }, [caseId]);
 
-  useEffect(() => { load(); }, [caseId]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const addNote = async () => {
     if (!newNote.trim() || !user) return;
@@ -93,30 +119,30 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
     return (
       <EmptyState
         title="Case not found"
-        description="This case doesn't exist or you don't have access."
-        action={<Link to="/cases"><Button variant="outline">Back to cases</Button></Link>}
+        description="This case does not exist or you do not have access."
+        action={
+          <Link to="/cases">
+            <Button variant="outline">Back to cases</Button>
+          </Link>
+        }
       />
     );
   }
 
-  const blockers = requirements.filter((r) => r.severity === "blocker" && r.status !== "met" && r.status !== "waived");
-  const warnings = requirements.filter((r) => r.severity === "warning" && r.status !== "met" && r.status !== "waived");
+  const requirementSummary = summarizeRequirementRows(requirements);
+  const blockers = requirementSummary.blockers;
+  const warnings = requirementSummary.warnings;
   const isChangePending = caseData.status === "change_pending";
-
-  // Next action recommendation
-  let nextAction = "";
-  if (caseData.status === "draft") nextAction = "Complete the case setup wizard to submit your case.";
-  else if (caseData.status === "missing_documents") nextAction = "Upload the required documents to proceed.";
-  else if (blockers.length > 0) nextAction = `Resolve ${blockers.length} blocker${blockers.length > 1 ? "s" : ""} to move forward.`;
-  else if (caseData.status === "ready_for_submission") nextAction = "Your case is ready! Submit it to your international office.";
-  else if (caseData.status === "submitted") nextAction = "Waiting for review from your international office.";
+  const nextAction = getCaseNextRecommendedAction(caseData.status, requirementSummary);
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-5">
-      {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <Link to="/cases" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-2">
+          <Link
+            to="/cases"
+            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-2"
+          >
             <ArrowLeft className="h-3.5 w-3.5" /> Back to cases
           </Link>
           <div className="flex items-center gap-3">
@@ -126,17 +152,19 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
             <StatusBadge status={caseData.status as CaseStatusKey} />
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            {caseData.role_title}{caseData.work_location ? ` · ${caseData.work_location}` : ""}
-            {caseData.start_date ? ` · Starts ${new Date(caseData.start_date).toLocaleDateString()}` : ""}
+            {caseData.role_title}
+            {caseData.work_location ? ` - ${caseData.work_location}` : ""}
+            {caseData.start_date
+              ? ` - Starts ${new Date(caseData.start_date).toLocaleDateString()}`
+              : ""}
           </p>
         </div>
       </div>
 
-      {/* Alerts */}
       {isChangePending && (
         <AlertBanner
           variant="warning"
-          title="Changes detected — reapproval may be needed"
+          title="Changes detected - reapproval may be needed"
           description="Core case fields were modified after approval. Contact your DSO to verify if resubmission is required."
         />
       )}
@@ -147,29 +175,45 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
           description="Resolve all blockers before your case can be marked ready for submission."
         />
       )}
-      {nextAction && (
-        <AlertBanner variant="info" title="Next step" description={nextAction} />
-      )}
+      {nextAction && <AlertBanner variant="info" title="Next step" description={nextAction} />}
 
-      {/* Stats row */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
-          { icon: AlertCircle, label: "Blockers", value: blockers.length, color: "text-destructive" },
-          { icon: Shield, label: "Warnings", value: warnings.length, color: "text-warning" },
+          {
+            icon: AlertCircle,
+            label: "Blockers",
+            value: requirementSummary.blockerCount,
+            color: "text-destructive",
+          },
+          {
+            icon: Shield,
+            label: "Warnings",
+            value: requirementSummary.warningCount,
+            color: "text-warning",
+          },
           { icon: FileText, label: "Documents", value: documents.length, color: "text-primary" },
-          { icon: Clock, label: "Days to start", value: caseData.start_date ? Math.max(0, Math.ceil((new Date(caseData.start_date).getTime() - Date.now()) / 86400000)) : "—", color: "text-muted-foreground" },
-        ].map((s) => (
-          <div key={s.label} className="rounded-lg border bg-card p-3 shadow-card">
+          {
+            icon: Clock,
+            label: "Days to start",
+            value: caseData.start_date
+              ? Math.max(
+                  0,
+                  Math.ceil((new Date(caseData.start_date).getTime() - Date.now()) / 86400000),
+                )
+              : "-",
+            color: "text-muted-foreground",
+          },
+        ].map((stat) => (
+          <div key={stat.label} className="rounded-lg border bg-card p-3 shadow-card">
             <div className="flex items-center gap-2">
-              <s.icon className={`h-4 w-4 ${s.color}`} />
-              <span className="text-xs text-muted-foreground">{s.label}</span>
+              <stat.icon className={`h-4 w-4 ${stat.color}`} />
+              <span className="text-xs text-muted-foreground">{stat.label}</span>
             </div>
-            <p className="mt-1 text-lg font-bold text-foreground">{s.value}</p>
+            <p className="mt-1 text-lg font-bold text-foreground">{stat.value}</p>
           </div>
         ))}
       </div>
 
-      {/* Tabs */}
       <Tabs defaultValue="overview">
         <TabsList className="w-full justify-start">
           <TabsTrigger value="overview">Overview</TabsTrigger>
@@ -180,24 +224,31 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
           <TabsTrigger value="notes">Notes</TabsTrigger>
         </TabsList>
 
-        {/* Overview */}
         <TabsContent value="overview">
           <Card className="shadow-card">
-            <CardHeader><CardTitle className="text-sm">Internship Details</CardTitle></CardHeader>
+            <CardHeader>
+              <CardTitle className="text-sm">Internship Details</CardTitle>
+            </CardHeader>
             <CardContent>
               <dl className="grid gap-3 sm:grid-cols-2 text-sm">
                 {[
                   ["Employer", caseData.employer_name],
                   ["Role", caseData.role_title],
                   ["Location", caseData.work_location],
-                  ["Start Date", caseData.start_date ? new Date(caseData.start_date).toLocaleDateString() : null],
-                  ["End Date", caseData.end_date ? new Date(caseData.end_date).toLocaleDateString() : null],
+                  [
+                    "Start Date",
+                    caseData.start_date ? new Date(caseData.start_date).toLocaleDateString() : null,
+                  ],
+                  [
+                    "End Date",
+                    caseData.end_date ? new Date(caseData.end_date).toLocaleDateString() : null,
+                  ],
                   ["Process Type", caseData.process_type],
                   ["Risk Level", caseData.risk_level],
                 ].map(([label, value]) => (
                   <div key={label as string}>
                     <dt className="text-xs text-muted-foreground">{label}</dt>
-                    <dd className="font-medium">{(value as string) || "—"}</dd>
+                    <dd className="font-medium">{(value as string) || "-"}</dd>
                   </div>
                 ))}
               </dl>
@@ -211,33 +262,46 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
           </Card>
         </TabsContent>
 
-        {/* Requirements */}
         <TabsContent value="requirements">
-          {requirements.length === 0 ? (
+          {!requirementSummary.hasEvaluatedRequirements ? (
             <EmptyState
               icon={<CheckCircle className="h-5 w-5 text-muted-foreground" />}
-              title="No requirements"
-              description="Requirements will be generated when you complete the case setup."
+              title="No requirement evaluation yet"
+              description="Requirements will appear after the case is evaluated against its CPT template."
             />
           ) : (
             <div className="space-y-2">
-              {requirements.map((req) => {
-                const statusConfig = REQUIREMENT_STATUSES[req.status as keyof typeof REQUIREMENT_STATUSES];
+              {requirements.map((requirement) => {
+                const statusConfig =
+                  REQUIREMENT_STATUSES[requirement.status as keyof typeof REQUIREMENT_STATUSES];
                 return (
-                  <div key={req.id} className="flex items-start justify-between rounded-lg border bg-card p-4 shadow-card">
+                  <div
+                    key={requirement.id}
+                    className="flex items-start justify-between rounded-lg border bg-card p-4 shadow-card"
+                  >
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <p className="text-sm font-medium">{req.label}</p>
-                        <SeverityBadge severity={req.severity} />
+                        <p className="text-sm font-medium">{requirement.label}</p>
+                        <SeverityBadge severity={requirement.severity} />
                       </div>
-                      {req.explanation && (
-                        <p className="mt-1 text-xs text-muted-foreground">{req.explanation}</p>
+                      {requirement.explanation && (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {requirement.explanation}
+                        </p>
                       )}
                     </div>
-                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                      statusConfig ? (req.status === "met" ? "bg-success/10 text-success" : req.status === "not_met" ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground") : "bg-muted text-muted-foreground"
-                    }`}>
-                      {statusConfig?.label || req.status}
+                    <span
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                        statusConfig
+                          ? requirement.status === "met"
+                            ? "bg-success/10 text-success"
+                            : requirement.status === "not_met"
+                              ? "bg-destructive/10 text-destructive"
+                              : "bg-muted text-muted-foreground"
+                          : "bg-muted text-muted-foreground"
+                      }`}
+                    >
+                      {statusConfig?.label || requirement.status}
                     </span>
                   </div>
                 );
@@ -246,7 +310,6 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
           )}
         </TabsContent>
 
-        {/* Documents */}
         <TabsContent value="documents">
           {documents.length === 0 ? (
             <EmptyState
@@ -256,27 +319,30 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
             />
           ) : (
             <div className="space-y-2">
-              {documents.map((doc) => (
-                <div key={doc.id} className="flex items-center justify-between rounded-lg border bg-card p-4 shadow-card">
+              {documents.map((document) => (
+                <div
+                  key={document.id}
+                  className="flex items-center justify-between rounded-lg border bg-card p-4 shadow-card"
+                >
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
                       <FileText className="h-4 w-4 text-primary" />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-sm font-medium truncate">{doc.file_name}</p>
+                      <p className="text-sm font-medium truncate">{document.file_name}</p>
                       <p className="text-xs text-muted-foreground">
-                        {doc.document_type.replace(/_/g, " ")} · v{doc.version_number} · {formatDistanceToNow(new Date(doc.created_at), { addSuffix: true })}
+                        {document.document_type.replace(/_/g, " ")} - v{document.version_number} -{" "}
+                        {formatDistanceToNow(new Date(document.created_at), { addSuffix: true })}
                       </p>
                     </div>
                   </div>
-                  <span className="text-xs font-medium text-success">{doc.upload_status}</span>
+                  <span className="text-xs font-medium text-success">{document.upload_status}</span>
                 </div>
               ))}
             </div>
           )}
         </TabsContent>
 
-        {/* Timeline */}
         <TabsContent value="timeline">
           {timeline.length === 0 ? (
             <EmptyState
@@ -299,7 +365,6 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
           )}
         </TabsContent>
 
-        {/* Audit Log */}
         <TabsContent value="audit">
           {auditLogs.length === 0 ? (
             <EmptyState
@@ -312,19 +377,27 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
               <table className="w-full text-sm">
                 <thead className="bg-muted/50">
                   <tr>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Action</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Field</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Old → New</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">When</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">
+                      Action
+                    </th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">
+                      Field
+                    </th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">
+                      Old {"->"} New
+                    </th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">
+                      When
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
                   {auditLogs.map((log) => (
                     <tr key={log.id}>
                       <td className="px-4 py-2 font-medium">{log.action_type}</td>
-                      <td className="px-4 py-2 text-muted-foreground">{log.field_name || "—"}</td>
+                      <td className="px-4 py-2 text-muted-foreground">{log.field_name || "-"}</td>
                       <td className="px-4 py-2 text-muted-foreground">
-                        {log.old_value || "—"} → {log.new_value || "—"}
+                        {log.old_value || "-"} {"->"} {log.new_value || "-"}
                       </td>
                       <td className="px-4 py-2 text-muted-foreground whitespace-nowrap">
                         {formatDistanceToNow(new Date(log.created_at), { addSuffix: true })}
@@ -337,7 +410,6 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
           )}
         </TabsContent>
 
-        {/* Notes */}
         <TabsContent value="notes">
           <div className="space-y-4">
             <div className="flex gap-2">
@@ -347,7 +419,11 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
                 placeholder="Add a note..."
                 className="flex-1 min-h-[60px] rounded-md border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               />
-              <Button onClick={addNote} disabled={!newNote.trim() || noteLoading} className="self-end">
+              <Button
+                onClick={addNote}
+                disabled={!newNote.trim() || noteLoading}
+                className="self-end"
+              >
                 {noteLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add"}
               </Button>
             </div>

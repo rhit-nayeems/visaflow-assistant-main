@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
@@ -7,13 +7,27 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { AlertBanner } from "@/components/shared/AlertBanner";
+import {
+  deriveCaseStatusFromRequirements,
+  evaluateCaseRequirements,
+} from "@/lib/cases/requirements";
+import { assertValidCaseStatusTransition } from "@/lib/cases/status";
 import { Loader2, ArrowLeft, ArrowRight, Check, Upload, FileText } from "lucide-react";
 import type { Tables } from "@/integrations/supabase/types";
 
 type School = Tables<"schools">;
 type SchoolTemplate = Tables<"school_templates">;
+type CaseRecord = Tables<"cases">;
+type Document = Tables<"documents">;
+type ExtractedField = Tables<"extracted_fields">;
 
 const WIZARD_STEPS = [
   { label: "School" },
@@ -32,7 +46,6 @@ export function CreateCaseWizard() {
   const [schools, setSchools] = useState<School[]>([]);
   const [templates, setTemplates] = useState<SchoolTemplate[]>([]);
 
-  // Form state
   const [selectedSchoolId, setSelectedSchoolId] = useState("");
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [employerName, setEmployerName] = useState("");
@@ -45,32 +58,45 @@ export function CreateCaseWizard() {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
 
   useEffect(() => {
-    supabase.from("schools").select("*").eq("active", true).then(({ data }) => {
-      setSchools(data || []);
-    });
+    supabase
+      .from("schools")
+      .select("*")
+      .eq("active", true)
+      .order("name")
+      .then(({ data }) => {
+        setSchools(data || []);
+      });
   }, []);
 
   useEffect(() => {
-    if (selectedSchoolId) {
-      supabase
-        .from("school_templates")
-        .select("*")
-        .eq("school_id", selectedSchoolId)
-        .eq("is_active", true)
-        .then(({ data }) => {
-          setTemplates(data || []);
-          if (data && data.length === 1) {
-            setSelectedTemplateId(data[0].id);
-          }
-        });
+    if (!selectedSchoolId) {
+      setTemplates([]);
+      setSelectedTemplateId("");
+      return;
     }
+
+    setTemplates([]);
+    setSelectedTemplateId("");
+
+    supabase
+      .from("school_templates")
+      .select("*")
+      .eq("school_id", selectedSchoolId)
+      .eq("is_active", true)
+      .order("version", { ascending: false })
+      .then(({ data }) => {
+        setTemplates(data || []);
+        if (data && data.length === 1) {
+          setSelectedTemplateId(data[0].id);
+        }
+      });
   }, [selectedSchoolId]);
 
   const saveDraft = async () => {
     if (!user) return null;
     setError("");
+
     if (caseId) {
-      // Update existing draft
       const { error } = await supabase
         .from("cases")
         .update({
@@ -85,39 +111,39 @@ export function CreateCaseWizard() {
         .eq("id", caseId);
       if (error) setError(error.message);
       return caseId;
-    } else {
-      // Create new draft
-      const { data, error } = await supabase
-        .from("cases")
-        .insert({
-          user_id: user.id,
-          school_template_id: selectedTemplateId || null,
-          employer_name: employerName || null,
-          role_title: roleTitle || null,
-          work_location: workLocation || null,
-          start_date: startDate || null,
-          end_date: endDate || null,
-          case_summary: caseSummary || null,
-          status: "draft",
-        })
-        .select("id")
-        .single();
-      if (error) {
-        setError(error.message);
-        return null;
-      }
-      setCaseId(data.id);
-
-      // Add timeline event
-      await supabase.from("case_timeline_events").insert({
-        case_id: data.id,
-        event_type: "case_created",
-        title: "Case created",
-        description: "CPT case draft created",
-      });
-
-      return data.id;
     }
+
+    const { data, error } = await supabase
+      .from("cases")
+      .insert({
+        user_id: user.id,
+        school_template_id: selectedTemplateId || null,
+        employer_name: employerName || null,
+        role_title: roleTitle || null,
+        work_location: workLocation || null,
+        start_date: startDate || null,
+        end_date: endDate || null,
+        case_summary: caseSummary || null,
+        status: "draft",
+      })
+      .select("id")
+      .single();
+
+    if (error) {
+      setError(error.message);
+      return null;
+    }
+
+    setCaseId(data.id);
+
+    await supabase.from("case_timeline_events").insert({
+      case_id: data.id,
+      event_type: "case_created",
+      title: "Case created",
+      description: "CPT case draft created",
+    });
+
+    return data.id;
   };
 
   const handleNext = async () => {
@@ -125,7 +151,7 @@ export function CreateCaseWizard() {
     const id = await saveDraft();
     setLoading(false);
     if (id || caseId) {
-      setStep((s) => Math.min(s + 1, 4));
+      setStep((currentStep) => Math.min(currentStep + 1, 4));
     }
   };
 
@@ -165,48 +191,136 @@ export function CreateCaseWizard() {
   };
 
   const handleConfirm = async () => {
-    if (!caseId) return;
-    setLoading(true);
+    if (!caseId || !user) return;
 
-    // Generate requirements from template
-    if (selectedTemplateId) {
-      const { data: template } = await supabase
-        .from("school_templates")
-        .select("config_json")
-        .eq("id", selectedTemplateId)
+    setLoading(true);
+    setError("");
+
+    try {
+      const { data: caseData, error: caseError } = await supabase
+        .from("cases")
+        .select("*")
+        .eq("id", caseId)
         .single();
 
-      if (template?.config_json) {
-        const config = template.config_json as { requirements?: Array<{ key: string; label: string; severity: string }> };
-        if (config.requirements) {
-          const reqs = config.requirements.map((r) => ({
-            case_id: caseId,
-            requirement_key: r.key,
-            label: r.label,
-            severity: r.severity as "blocker" | "warning" | "info",
-            status: "pending" as const,
-            explanation: `This requirement must be met before submission.`,
-            source: "template",
-          }));
-          await supabase.from("case_requirements").insert(reqs);
+      if (caseError || !caseData) {
+        throw new Error(caseError?.message || "Unable to load the current case.");
+      }
+
+      let templateConfig: unknown = null;
+      if (selectedTemplateId) {
+        const { data: template, error: templateError } = await supabase
+          .from("school_templates")
+          .select("config_json")
+          .eq("id", selectedTemplateId)
+          .single();
+
+        if (templateError) {
+          throw new Error(templateError.message);
+        }
+
+        templateConfig = template?.config_json;
+      }
+
+      const { data: documents, error: documentsError } = await supabase
+        .from("documents")
+        .select("*")
+        .eq("case_id", caseId)
+        .order("created_at", { ascending: false });
+
+      if (documentsError) {
+        throw new Error(documentsError.message);
+      }
+
+      const documentIds = (documents || []).map((document) => document.id);
+      let extractedFields: ExtractedField[] = [];
+
+      if (documentIds.length > 0) {
+        const { data: extractedData, error: extractedError } = await supabase
+          .from("extracted_fields")
+          .select("*")
+          .in("document_id", documentIds);
+
+        if (extractedError) {
+          throw new Error(extractedError.message);
+        }
+
+        extractedFields = extractedData || [];
+      }
+
+      const evaluatedRequirements = evaluateCaseRequirements({
+        caseData: caseData as CaseRecord,
+        documents: (documents || []) as Document[],
+        extractedFields,
+        templateConfig,
+      });
+
+      const nextStatus = assertValidCaseStatusTransition(
+        caseData.status,
+        deriveCaseStatusFromRequirements(evaluatedRequirements),
+      );
+
+      const { error: deleteRequirementsError } = await supabase
+        .from("case_requirements")
+        .delete()
+        .eq("case_id", caseId);
+
+      if (deleteRequirementsError) {
+        throw new Error(deleteRequirementsError.message);
+      }
+
+      if (evaluatedRequirements.length > 0) {
+        const { error: insertRequirementsError } = await supabase
+          .from("case_requirements")
+          .insert(evaluatedRequirements);
+
+        if (insertRequirementsError) {
+          throw new Error(insertRequirementsError.message);
         }
       }
+
+      const { error: updateCaseError } = await supabase
+        .from("cases")
+        .update({ status: nextStatus })
+        .eq("id", caseId);
+
+      if (updateCaseError) {
+        throw new Error(updateCaseError.message);
+      }
+
+      const statusLabel = nextStatus.replace(/_/g, " ");
+      const [timelineResult, auditResult] = await Promise.all([
+        supabase.from("case_timeline_events").insert({
+          case_id: caseId,
+          event_type: "status_changed",
+          title: `Status changed to ${statusLabel}`,
+          description: "Initial requirement evaluation completed.",
+        }),
+        supabase.from("audit_logs").insert({
+          case_id: caseId,
+          actor_id: user.id,
+          action_type: "status_changed",
+          field_name: "status",
+          old_value: caseData.status,
+          new_value: nextStatus,
+          reason: "Initial deterministic CPT requirement evaluation completed.",
+        }),
+      ]);
+
+      if (timelineResult.error) {
+        throw new Error(timelineResult.error.message);
+      }
+
+      if (auditResult.error) {
+        throw new Error(auditResult.error.message);
+      }
+
+      navigate({ to: "/cases/$caseId", params: { caseId } });
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Unable to finalize this case.");
+    } finally {
+      setLoading(false);
     }
-
-    // Evaluate basic status
-    const newStatus = (!employerName || !roleTitle || !startDate) ? "missing_documents" as const : "in_progress" as const;
-
-    await supabase.from("cases").update({ status: newStatus }).eq("id", caseId);
-
-    await supabase.from("case_timeline_events").insert({
-      case_id: caseId,
-      event_type: "status_changed",
-      title: `Status changed to ${newStatus.replace(/_/g, " ")}`,
-      description: "Case submitted from wizard",
-    });
-
-    setLoading(false);
-    navigate({ to: "/cases/$caseId", params: { caseId } });
   };
 
   return (
@@ -220,7 +334,6 @@ export function CreateCaseWizard() {
 
       {error && <AlertBanner variant="error" title={error} />}
 
-      {/* Step 0: School */}
       {step === 0 && (
         <Card className="shadow-card">
           <CardHeader>
@@ -228,6 +341,13 @@ export function CreateCaseWizard() {
             <CardDescription>Choose the university for this CPT application</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {schools.length === 0 && (
+              <AlertBanner
+                variant="warning"
+                title="No active school templates found"
+                description="Apply the latest Supabase migration to seed the default CPT school and template."
+              />
+            )}
             <div>
               <Label className="text-xs">University</Label>
               <Select value={selectedSchoolId} onValueChange={setSelectedSchoolId}>
@@ -235,8 +355,10 @@ export function CreateCaseWizard() {
                   <SelectValue placeholder="Select a university" />
                 </SelectTrigger>
                 <SelectContent>
-                  {schools.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                  {schools.map((school) => (
+                    <SelectItem key={school.id} value={school.id}>
+                      {school.name}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -249,9 +371,9 @@ export function CreateCaseWizard() {
                     <SelectValue placeholder="Select template" />
                   </SelectTrigger>
                   <SelectContent>
-                    {templates.map((t) => (
-                      <SelectItem key={t.id} value={t.id}>
-                        {t.process_type} v{t.version}
+                    {templates.map((template) => (
+                      <SelectItem key={template.id} value={template.id}>
+                        {template.process_type} v{template.version}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -262,7 +384,6 @@ export function CreateCaseWizard() {
         </Card>
       )}
 
-      {/* Step 1: Internship details */}
       {step === 1 && (
         <Card className="shadow-card">
           <CardHeader>
@@ -273,25 +394,50 @@ export function CreateCaseWizard() {
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <Label className="text-xs">Employer name *</Label>
-                <Input value={employerName} onChange={(e) => setEmployerName(e.target.value)} placeholder="Acme Corp" className="mt-1" />
+                <Input
+                  value={employerName}
+                  onChange={(e) => setEmployerName(e.target.value)}
+                  placeholder="Acme Corp"
+                  className="mt-1"
+                />
               </div>
               <div>
                 <Label className="text-xs">Role title *</Label>
-                <Input value={roleTitle} onChange={(e) => setRoleTitle(e.target.value)} placeholder="Software Engineer Intern" className="mt-1" />
+                <Input
+                  value={roleTitle}
+                  onChange={(e) => setRoleTitle(e.target.value)}
+                  placeholder="Software Engineer Intern"
+                  className="mt-1"
+                />
               </div>
             </div>
             <div>
               <Label className="text-xs">Work location</Label>
-              <Input value={workLocation} onChange={(e) => setWorkLocation(e.target.value)} placeholder="San Francisco, CA" className="mt-1" />
+              <Input
+                value={workLocation}
+                onChange={(e) => setWorkLocation(e.target.value)}
+                placeholder="San Francisco, CA"
+                className="mt-1"
+              />
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <Label className="text-xs">Start date *</Label>
-                <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="mt-1" />
+                <Input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="mt-1"
+                />
               </div>
               <div>
                 <Label className="text-xs">End date</Label>
-                <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="mt-1" />
+                <Input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="mt-1"
+                />
               </div>
             </div>
             <div>
@@ -307,7 +453,6 @@ export function CreateCaseWizard() {
         </Card>
       )}
 
-      {/* Step 2: Documents */}
       {step === 2 && (
         <Card className="shadow-card">
           <CardHeader>
@@ -321,7 +466,7 @@ export function CreateCaseWizard() {
                 Drag and drop, or click to select a file
               </p>
               <p className="text-xs text-muted-foreground mt-1">
-                PDF, JPG, PNG, or Word — up to 25MB
+                PDF, JPG, PNG, or Word - up to 25MB
               </p>
               <input
                 type="file"
@@ -348,7 +493,6 @@ export function CreateCaseWizard() {
         </Card>
       )}
 
-      {/* Step 3: Review */}
       {step === 3 && (
         <Card className="shadow-card">
           <CardHeader>
@@ -367,7 +511,7 @@ export function CreateCaseWizard() {
               ].map(([label, value]) => (
                 <div key={label} className="flex justify-between">
                   <dt className="text-muted-foreground">{label}</dt>
-                  <dd className="font-medium text-foreground">{value || "—"}</dd>
+                  <dd className="font-medium text-foreground">{value || "-"}</dd>
                 </div>
               ))}
             </dl>
@@ -375,37 +519,41 @@ export function CreateCaseWizard() {
         </Card>
       )}
 
-      {/* Step 4: Confirm */}
       {step === 4 && (
         <Card className="shadow-card">
           <CardHeader>
-            <CardTitle className="text-base">Confirm & create</CardTitle>
+            <CardTitle className="text-base">Confirm and create</CardTitle>
             <CardDescription>
-              Your case will be created and requirements will be generated based on your school's CPT template.
+              Your case will be created and evaluated against the selected CPT template.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <AlertBanner
               variant="info"
               title="What happens next?"
-              description="We'll check your case against your school's requirements and let you know if anything is missing. You can always update your case later."
+              description="VisaFlow will run a deterministic requirement check, update your case status, and log the initial status change."
             />
           </CardContent>
         </Card>
       )}
 
-      {/* Navigation */}
       <div className="flex items-center justify-between">
         <Button
           variant="outline"
-          onClick={() => step === 0 ? navigate({ to: "/cases" }) : setStep((s) => s - 1)}
+          onClick={() =>
+            step === 0 ? navigate({ to: "/cases" }) : setStep((currentStep) => currentStep - 1)
+          }
           className="gap-1.5"
         >
           <ArrowLeft className="h-4 w-4" />
           {step === 0 ? "Cancel" : "Back"}
         </Button>
         {step < 4 ? (
-          <Button onClick={handleNext} disabled={loading || (step === 0 && !selectedSchoolId)} className="gap-1.5">
+          <Button
+            onClick={handleNext}
+            disabled={loading || (step === 0 && !selectedSchoolId)}
+            className="gap-1.5"
+          >
             {loading && <Loader2 className="h-4 w-4 animate-spin" />}
             Next <ArrowRight className="h-4 w-4" />
           </Button>

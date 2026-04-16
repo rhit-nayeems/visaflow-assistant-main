@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
@@ -8,32 +8,45 @@ import { StatusBadge } from "@/components/shared/StatusBadge";
 import { AlertBanner } from "@/components/shared/AlertBanner";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { TimelineItem } from "@/components/shared/TimelineItem";
-import {
-  FileText, Plus, AlertCircle, Clock, CheckCircle, BarChart3, Loader2,
-} from "lucide-react";
+import { summarizeRequirementRows } from "@/lib/cases/requirements";
+import { FileText, Plus, AlertCircle, Clock, CheckCircle, BarChart3, Loader2 } from "lucide-react";
 import type { Tables } from "@/integrations/supabase/types";
 import type { CaseStatusKey } from "@/lib/constants";
 
 type Case = Tables<"cases">;
+type Requirement = Tables<"case_requirements">;
 type TimelineEvent = Tables<"case_timeline_events">;
 
 export function DashboardPage() {
   const { user } = useAuth();
   const [cases, setCases] = useState<Case[]>([]);
+  const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!user) return;
+
     const load = async () => {
-      const [casesRes, eventsRes] = await Promise.all([
-        supabase.from("cases").select("*").eq("user_id", user.id).order("updated_at", { ascending: false }),
-        supabase.from("case_timeline_events").select("*").order("created_at", { ascending: false }).limit(10),
+      const [casesRes, requirementsRes, eventsRes] = await Promise.all([
+        supabase
+          .from("cases")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("updated_at", { ascending: false }),
+        supabase.from("case_requirements").select("*"),
+        supabase
+          .from("case_timeline_events")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .limit(10),
       ]);
       setCases(casesRes.data || []);
+      setRequirements(requirementsRes.data || []);
       setEvents(eventsRes.data || []);
       setLoading(false);
     };
+
     load();
   }, [user]);
 
@@ -45,25 +58,61 @@ export function DashboardPage() {
     );
   }
 
-  const activeCases = cases.filter(c => !["completed", "denied"].includes(c.status));
-  const blockedCases = cases.filter(c => c.status === "blocked" || c.status === "missing_documents");
-  const readyCases = cases.filter(c => c.status === "ready_for_submission");
-  const upcomingDeadlines = cases.filter(c => {
-    if (!c.start_date) return false;
-    const days = Math.ceil((new Date(c.start_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+  const requirementSummariesByCaseId = new Map(
+    cases.map((caseData) => [
+      caseData.id,
+      summarizeRequirementRows(
+        requirements.filter((requirement) => requirement.case_id === caseData.id),
+      ),
+    ]),
+  );
+
+  const activeCases = cases.filter(
+    (caseData) => !["completed", "denied"].includes(caseData.status),
+  );
+  const blockedCases = activeCases.filter((caseData) => {
+    const summary = requirementSummariesByCaseId.get(caseData.id);
+    if (summary?.hasEvaluatedRequirements) {
+      return summary.blockerCount > 0;
+    }
+
+    return caseData.status === "blocked" || caseData.status === "missing_documents";
+  });
+  const readyCases = activeCases.filter((caseData) => {
+    const summary = requirementSummariesByCaseId.get(caseData.id);
+    if (summary?.hasEvaluatedRequirements) {
+      return summary.readyForSubmission;
+    }
+
+    return caseData.status === "ready_for_submission";
+  });
+  const upcomingDeadlines = cases.filter((caseData) => {
+    if (!caseData.start_date) return false;
+    const days = Math.ceil(
+      (new Date(caseData.start_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24),
+    );
     return days > 0 && days <= 14;
   });
 
   const statCards = [
     { label: "Active Cases", value: activeCases.length, icon: FileText, color: "text-primary" },
     { label: "Blocked", value: blockedCases.length, icon: AlertCircle, color: "text-destructive" },
-    { label: "Upcoming Deadlines", value: upcomingDeadlines.length, icon: Clock, color: "text-warning" },
-    { label: "Ready to Submit", value: readyCases.length, icon: CheckCircle, color: "text-success" },
+    {
+      label: "Upcoming Deadlines",
+      value: upcomingDeadlines.length,
+      icon: Clock,
+      color: "text-warning",
+    },
+    {
+      label: "Ready to Submit",
+      value: readyCases.length,
+      icon: CheckCircle,
+      color: "text-success",
+    },
   ];
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
@@ -76,7 +125,6 @@ export function DashboardPage() {
         </Link>
       </div>
 
-      {/* Alerts */}
       {blockedCases.length > 0 && (
         <AlertBanner
           variant="error"
@@ -84,13 +132,14 @@ export function DashboardPage() {
           description="Missing documents or requirements are preventing progress. Review blocked cases."
           action={
             <Link to="/cases">
-              <Button variant="outline" size="sm">View cases</Button>
+              <Button variant="outline" size="sm">
+                View cases
+              </Button>
             </Link>
           }
         />
       )}
 
-      {/* Stat cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {statCards.map((stat) => (
           <Card key={stat.label} className="shadow-card">
@@ -100,7 +149,9 @@ export function DashboardPage() {
                   <p className="text-xs font-medium text-muted-foreground">{stat.label}</p>
                   <p className="mt-1 text-2xl font-bold text-foreground">{stat.value}</p>
                 </div>
-                <div className={`flex h-10 w-10 items-center justify-center rounded-lg bg-muted ${stat.color}`}>
+                <div
+                  className={`flex h-10 w-10 items-center justify-center rounded-lg bg-muted ${stat.color}`}
+                >
                   <stat.icon className="h-5 w-5" />
                 </div>
               </div>
@@ -110,12 +161,13 @@ export function DashboardPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        {/* Recent cases */}
         <Card className="shadow-card">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-semibold">Recent Cases</CardTitle>
-              <Link to="/cases" className="text-xs text-primary hover:underline">View all</Link>
+              <Link to="/cases" className="text-xs text-primary hover:underline">
+                View all
+              </Link>
             </div>
           </CardHeader>
           <CardContent>
@@ -134,22 +186,22 @@ export function DashboardPage() {
               />
             ) : (
               <div className="space-y-3">
-                {cases.slice(0, 5).map((c) => (
+                {cases.slice(0, 5).map((caseData) => (
                   <Link
-                    key={c.id}
+                    key={caseData.id}
                     to="/cases/$caseId"
-                    params={{ caseId: c.id }}
+                    params={{ caseId: caseData.id }}
                     className="flex items-center justify-between rounded-lg border p-3 transition-colors hover:bg-accent/50"
                   >
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-foreground truncate">
-                        {c.employer_name || "Untitled case"}
+                        {caseData.employer_name || "Untitled case"}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {c.role_title || "No role specified"}
+                        {caseData.role_title || "No role specified"}
                       </p>
                     </div>
-                    <StatusBadge status={c.status as CaseStatusKey} />
+                    <StatusBadge status={caseData.status as CaseStatusKey} />
                   </Link>
                 ))}
               </div>
@@ -157,7 +209,6 @@ export function DashboardPage() {
           </CardContent>
         </Card>
 
-        {/* Recent activity */}
         <Card className="shadow-card">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-semibold">Recent Activity</CardTitle>

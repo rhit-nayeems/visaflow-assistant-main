@@ -1,0 +1,179 @@
+[2mDefault inspector port 9229 not available, using 9230 instead
+[22m
+ReferenceError: TSRSplitComponent is not defined
+    at runInRunnerObject (workers/runner-worker/index.js:106:3)
+    ... 4 lines matching cause stack trace ...
+    at maybeCaptureError (workers/runner-worker/index.js:50:10) {
+  cause: ReferenceError: TSRSplitComponent is not defined
+      at runInRunnerObject (workers/runner-worker/index.js:106:3)
+      at async Promise.all (index 0)
+      at loadEntries (C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/start-server-core/src/createStartHandler.ts:235:53)
+      at startRequestResolver (C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/start-server-core/src/createStartHandler.ts:568:23)
+      at Object.fetch (C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/react-start/src/default-entry/server.ts:16:14)
+      at maybeCaptureError (workers/runner-worker/index.js:50:10) {
+    remote: true
+  },
+  status: 500,
+  statusText: undefined,
+  headers: undefined,
+  data: undefined,
+  body: undefined,
+  unhandled: true
+}
+ReferenceError: TSRSplitComponent is not defined
+    at runInRunnerObject (workers/runner-worker/index.js:106:3)
+    ... 4 lines matching cause stack trace ...
+    at maybeCaptureError (workers/runner-worker/index.js:50:10) {
+  cause: ReferenceError: TSRSplitComponent is not defined
+      at runInRunnerObject (workers/runner-worker/index.js:106:3)
+      at async Promise.all (index 0)
+      at loadEntries (C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/start-server-core/src/createStartHandler.ts:235:53)
+      at startRequestResolver (C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/start-server-core/src/createStartHandler.ts:568:23)
+      at Object.fetch (C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/react-start/src/default-entry/server.ts:16:14)
+      at maybeCaptureError (workers/runner-worker/index.js:50:10) {
+    remote: true
+  },
+  status: 500,
+  statusText: undefined,
+  headers: undefined,
+  data: undefined,
+  body: undefined,
+  unhandled: true
+}
+Error: EPERM: operation not permitted, rename 'C:\Users\nayeems\Downloads\FILES\code-base\vscode\projects\visaflow-assistant-main\visaflow-assistant-main\.tanstack\tmp\2e7e525b-81379ba752abb1b3c0457b2c7905e184' -> 'C:\Users\nayeems\Downloads\FILES\code-base\vscode\projects\visaflow-assistant-main\visaflow-assistant-main\src\routeTree.gen.ts'
+    at file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/router-generator/dist/esm/generator.js:127:13
+    at async generate (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/router-plugin/dist/esm/core/router-generator-plugin.js:38:4)
+    at async BasicMinimalPluginContext.configResolved (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/router-plugin/dist/esm/core/router-generator-plugin.js:55:4)
+    at async Promise.all (index 0)
+    at async resolveConfig (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:35686:2)
+    at async _createServer (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:25365:67)
+    at async restartServer (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:25770:16)
+    at async viteDevServer.restart (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@cloudflare/vite-plugin/dist/index.mjs:31268:7)
+    at async restartServerWithUrls (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:25806:2)
+    at async handleHMRUpdate (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:25966:4)
+Error: EPERM: operation not permitted, rename 'C:\Users\nayeems\Downloads\FILES\code-base\vscode\projects\visaflow-assistant-main\visaflow-assistant-main\.tanstack\tmp\2e7e525b-81379ba752abb1b3c0457b2c7905e184' -> 'C:\Users\nayeems\Downloads\FILES\code-base\vscode\projects\visaflow-assistant-main\visaflow-assistant-main\src\routeTree.gen.ts'
+    at file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/router-generator/dist/esm/generator.js:127:13
+    at async generate (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/router-plugin/dist/esm/core/router-generator-plugin.js:38:4)
+    at async PluginContext.watchChange (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/router-plugin/dist/esm/core/router-generator-plugin.js:48:4)
+    at async Promise.all (index 1)
+    at async EnvironmentPluginContainer.hookParallel (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:28665:3)
+    at async EnvironmentPluginContainer.watchChange (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:28825:3)
+    at async Promise.all (index 0)
+    at async FSWatcher.<anonymous> (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:25582:3)
+Error: EPERM: operation not permitted, rename 'C:\Users\nayeems\Downloads\FILES\code-base\vscode\projects\visaflow-assistant-main\visaflow-assistant-main\.tanstack\tmp\00219f5d-81379ba752abb1b3c0457b2c7905e184' -> 'C:\Users\nayeems\Downloads\FILES\code-base\vscode\projects\visaflow-assistant-main\visaflow-assistant-main\src\routeTree.gen.ts'
+    at file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/router-generator/dist/esm/generator.js:127:13
+    at async generate (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/router-plugin/dist/esm/core/router-generator-plugin.js:38:4)
+    at async PluginContext.watchChange (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/router-plugin/dist/esm/core/router-generator-plugin.js:48:4)
+    at async Promise.all (index 2)
+    at async EnvironmentPluginContainer.hookParallel (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:28665:3)
+    at async EnvironmentPluginContainer.watchChange (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:28825:3)
+    at async Promise.all (index 0)
+    at async FSWatcher.<anonymous> (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:25582:3)
+Error: EPERM: operation not permitted, rename 'C:\Users\nayeems\Downloads\FILES\code-base\vscode\projects\visaflow-assistant-main\visaflow-assistant-main\.tanstack\tmp\c076c380-81379ba752abb1b3c0457b2c7905e184' -> 'C:\Users\nayeems\Downloads\FILES\code-base\vscode\projects\visaflow-assistant-main\visaflow-assistant-main\src\routeTree.gen.ts'
+    at file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/router-generator/dist/esm/generator.js:127:13
+    at async generate (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/router-plugin/dist/esm/core/router-generator-plugin.js:38:4)
+    at async PluginContext.watchChange (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/router-plugin/dist/esm/core/router-generator-plugin.js:48:4)
+    at async Promise.all (index 2)
+    at async EnvironmentPluginContainer.hookParallel (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:28665:3)
+    at async EnvironmentPluginContainer.watchChange (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:28825:3)
+    at async Promise.all (index 0)
+    at async FSWatcher.<anonymous> (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:25582:3)
+Error: EPERM: operation not permitted, rename 'C:\Users\nayeems\Downloads\FILES\code-base\vscode\projects\visaflow-assistant-main\visaflow-assistant-main\.tanstack\tmp\2e7e525b-81379ba752abb1b3c0457b2c7905e184' -> 'C:\Users\nayeems\Downloads\FILES\code-base\vscode\projects\visaflow-assistant-main\visaflow-assistant-main\src\routeTree.gen.ts'
+    at file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/router-generator/dist/esm/generator.js:127:13
+    at async generate (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/router-plugin/dist/esm/core/router-generator-plugin.js:38:4)
+    at async PluginContext.watchChange (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/router-plugin/dist/esm/core/router-generator-plugin.js:48:4)
+    at async Promise.all (index 1)
+    at async EnvironmentPluginContainer.hookParallel (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:28665:3)
+    at async EnvironmentPluginContainer.watchChange (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:28825:3)
+    at async Promise.all (index 0)
+    at async FSWatcher.<anonymous> (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:25582:3)
+Error: EPERM: operation not permitted, rename 'C:\Users\nayeems\Downloads\FILES\code-base\vscode\projects\visaflow-assistant-main\visaflow-assistant-main\.tanstack\tmp\00219f5d-81379ba752abb1b3c0457b2c7905e184' -> 'C:\Users\nayeems\Downloads\FILES\code-base\vscode\projects\visaflow-assistant-main\visaflow-assistant-main\src\routeTree.gen.ts'
+    at file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/router-generator/dist/esm/generator.js:127:13
+    at async generate (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/router-plugin/dist/esm/core/router-generator-plugin.js:38:4)
+    at async PluginContext.watchChange (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/router-plugin/dist/esm/core/router-generator-plugin.js:48:4)
+    at async Promise.all (index 2)
+    at async EnvironmentPluginContainer.hookParallel (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:28665:3)
+    at async EnvironmentPluginContainer.watchChange (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:28825:3)
+    at async Promise.all (index 0)
+    at async FSWatcher.<anonymous> (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:25582:3)
+Error: EPERM: operation not permitted, rename 'C:\Users\nayeems\Downloads\FILES\code-base\vscode\projects\visaflow-assistant-main\visaflow-assistant-main\.tanstack\tmp\2e7e525b-81379ba752abb1b3c0457b2c7905e184' -> 'C:\Users\nayeems\Downloads\FILES\code-base\vscode\projects\visaflow-assistant-main\visaflow-assistant-main\src\routeTree.gen.ts'
+    at file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/router-generator/dist/esm/generator.js:127:13
+    at async generate (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/router-plugin/dist/esm/core/router-generator-plugin.js:38:4)
+    at async PluginContext.watchChange (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/router-plugin/dist/esm/core/router-generator-plugin.js:48:4)
+    at async Promise.all (index 1)
+    at async EnvironmentPluginContainer.hookParallel (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:28665:3)
+    at async EnvironmentPluginContainer.watchChange (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:28825:3)
+    at async Promise.all (index 0)
+    at async FSWatcher.<anonymous> (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:25582:3)
+Error: EPERM: operation not permitted, rename 'C:\Users\nayeems\Downloads\FILES\code-base\vscode\projects\visaflow-assistant-main\visaflow-assistant-main\.tanstack\tmp\00219f5d-81379ba752abb1b3c0457b2c7905e184' -> 'C:\Users\nayeems\Downloads\FILES\code-base\vscode\projects\visaflow-assistant-main\visaflow-assistant-main\src\routeTree.gen.ts'
+    at file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/router-generator/dist/esm/generator.js:127:13
+    at async generate (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/router-plugin/dist/esm/core/router-generator-plugin.js:38:4)
+    at async PluginContext.watchChange (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/router-plugin/dist/esm/core/router-generator-plugin.js:48:4)
+    at async Promise.all (index 2)
+    at async EnvironmentPluginContainer.hookParallel (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:28665:3)
+    at async EnvironmentPluginContainer.watchChange (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:28825:3)
+    at async Promise.all (index 0)
+    at async FSWatcher.<anonymous> (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:25582:3)
+Error: EPERM: operation not permitted, rename 'C:\Users\nayeems\Downloads\FILES\code-base\vscode\projects\visaflow-assistant-main\visaflow-assistant-main\.tanstack\tmp\00219f5d-81379ba752abb1b3c0457b2c7905e184' -> 'C:\Users\nayeems\Downloads\FILES\code-base\vscode\projects\visaflow-assistant-main\visaflow-assistant-main\src\routeTree.gen.ts'
+    at file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/router-generator/dist/esm/generator.js:127:13
+    at async generate (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/router-plugin/dist/esm/core/router-generator-plugin.js:38:4)
+    at async PluginContext.watchChange (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/router-plugin/dist/esm/core/router-generator-plugin.js:48:4)
+    at async Promise.all (index 2)
+    at async EnvironmentPluginContainer.hookParallel (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:28665:3)
+    at async EnvironmentPluginContainer.watchChange (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:28825:3)
+    at async Promise.all (index 0)
+    at async FSWatcher.<anonymous> (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:25582:3)
+Error: EPERM: operation not permitted, rename 'C:\Users\nayeems\Downloads\FILES\code-base\vscode\projects\visaflow-assistant-main\visaflow-assistant-main\.tanstack\tmp\2e7e525b-81379ba752abb1b3c0457b2c7905e184' -> 'C:\Users\nayeems\Downloads\FILES\code-base\vscode\projects\visaflow-assistant-main\visaflow-assistant-main\src\routeTree.gen.ts'
+    at file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/router-generator/dist/esm/generator.js:127:13
+    at async generate (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/router-plugin/dist/esm/core/router-generator-plugin.js:38:4)
+    at async PluginContext.watchChange (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/router-plugin/dist/esm/core/router-generator-plugin.js:48:4)
+    at async Promise.all (index 1)
+    at async EnvironmentPluginContainer.hookParallel (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:28665:3)
+    at async EnvironmentPluginContainer.watchChange (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:28825:3)
+    at async Promise.all (index 0)
+    at async FSWatcher.<anonymous> (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:25582:3)
+Error: EPERM: operation not permitted, rename 'C:\Users\nayeems\Downloads\FILES\code-base\vscode\projects\visaflow-assistant-main\visaflow-assistant-main\.tanstack\tmp\00219f5d-81379ba752abb1b3c0457b2c7905e184' -> 'C:\Users\nayeems\Downloads\FILES\code-base\vscode\projects\visaflow-assistant-main\visaflow-assistant-main\src\routeTree.gen.ts'
+    at file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/router-generator/dist/esm/generator.js:127:13
+    at async generate (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/router-plugin/dist/esm/core/router-generator-plugin.js:38:4)
+    at async PluginContext.watchChange (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/router-plugin/dist/esm/core/router-generator-plugin.js:48:4)
+    at async Promise.all (index 2)
+    at async EnvironmentPluginContainer.hookParallel (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:28665:3)
+    at async EnvironmentPluginContainer.watchChange (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:28825:3)
+    at async Promise.all (index 0)
+    at async FSWatcher.<anonymous> (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:25582:3)
+Error: EPERM: operation not permitted, rename 'C:\Users\nayeems\Downloads\FILES\code-base\vscode\projects\visaflow-assistant-main\visaflow-assistant-main\.tanstack\tmp\00219f5d-81379ba752abb1b3c0457b2c7905e184' -> 'C:\Users\nayeems\Downloads\FILES\code-base\vscode\projects\visaflow-assistant-main\visaflow-assistant-main\src\routeTree.gen.ts'
+    at file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/router-generator/dist/esm/generator.js:127:13
+    at async generate (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/router-plugin/dist/esm/core/router-generator-plugin.js:38:4)
+    at async PluginContext.watchChange (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/router-plugin/dist/esm/core/router-generator-plugin.js:48:4)
+    at async Promise.all (index 2)
+    at async EnvironmentPluginContainer.hookParallel (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:28665:3)
+    at async EnvironmentPluginContainer.watchChange (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:28825:3)
+    at async Promise.all (index 0)
+    at async FSWatcher.<anonymous> (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:25582:3)
+Error: EPERM: operation not permitted, rename 'C:\Users\nayeems\Downloads\FILES\code-base\vscode\projects\visaflow-assistant-main\visaflow-assistant-main\.tanstack\tmp\2e7e525b-81379ba752abb1b3c0457b2c7905e184' -> 'C:\Users\nayeems\Downloads\FILES\code-base\vscode\projects\visaflow-assistant-main\visaflow-assistant-main\src\routeTree.gen.ts'
+    at file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/router-generator/dist/esm/generator.js:127:13
+    at async generate (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/router-plugin/dist/esm/core/router-generator-plugin.js:38:4)
+    at async PluginContext.watchChange (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/router-plugin/dist/esm/core/router-generator-plugin.js:48:4)
+    at async Promise.all (index 1)
+    at async EnvironmentPluginContainer.hookParallel (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:28665:3)
+    at async EnvironmentPluginContainer.watchChange (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:28825:3)
+    at async Promise.all (index 0)
+    at async FSWatcher.<anonymous> (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:25582:3)
+Error: EPERM: operation not permitted, rename 'C:\Users\nayeems\Downloads\FILES\code-base\vscode\projects\visaflow-assistant-main\visaflow-assistant-main\.tanstack\tmp\2e7e525b-81379ba752abb1b3c0457b2c7905e184' -> 'C:\Users\nayeems\Downloads\FILES\code-base\vscode\projects\visaflow-assistant-main\visaflow-assistant-main\src\routeTree.gen.ts'
+    at file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/router-generator/dist/esm/generator.js:127:13
+    at async generate (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/router-plugin/dist/esm/core/router-generator-plugin.js:38:4)
+    at async PluginContext.watchChange (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/router-plugin/dist/esm/core/router-generator-plugin.js:48:4)
+    at async Promise.all (index 1)
+    at async EnvironmentPluginContainer.hookParallel (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:28665:3)
+    at async EnvironmentPluginContainer.watchChange (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:28825:3)
+    at async Promise.all (index 0)
+    at async FSWatcher.<anonymous> (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:25582:3)
+Error: EPERM: operation not permitted, rename 'C:\Users\nayeems\Downloads\FILES\code-base\vscode\projects\visaflow-assistant-main\visaflow-assistant-main\.tanstack\tmp\00219f5d-81379ba752abb1b3c0457b2c7905e184' -> 'C:\Users\nayeems\Downloads\FILES\code-base\vscode\projects\visaflow-assistant-main\visaflow-assistant-main\src\routeTree.gen.ts'
+    at file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/router-generator/dist/esm/generator.js:127:13
+    at async generate (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/router-plugin/dist/esm/core/router-generator-plugin.js:38:4)
+    at async PluginContext.watchChange (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/@tanstack/router-plugin/dist/esm/core/router-generator-plugin.js:48:4)
+    at async Promise.all (index 2)
+    at async EnvironmentPluginContainer.hookParallel (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:28665:3)
+    at async EnvironmentPluginContainer.watchChange (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:28825:3)
+    at async Promise.all (index 0)
+    at async FSWatcher.<anonymous> (file:///C:/Users/nayeems/Downloads/FILES/code-base/vscode/projects/visaflow-assistant-main/visaflow-assistant-main/node_modules/vite/dist/node/chunks/config.js:25582:3)
