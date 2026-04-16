@@ -1,7 +1,14 @@
-﻿import { useState, useEffect } from "react";
+﻿import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
+import { buildSupabaseServerFnHeaders } from "@/lib/server-functions";
+import {
+  finalizeCaseCreationAndEvaluateAction,
+  registerUploadedCaseDocumentAction,
+  saveCaseDraftAction,
+} from "@/server/cases/actions";
 import { ProgressTracker } from "@/components/shared/ProgressTracker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,19 +22,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { AlertBanner } from "@/components/shared/AlertBanner";
-import {
-  deriveCaseStatusFromRequirements,
-  evaluateCaseRequirements,
-} from "@/lib/cases/requirements";
-import { assertValidCaseStatusTransition } from "@/lib/cases/status";
 import { Loader2, ArrowLeft, ArrowRight, Check, Upload, FileText } from "lucide-react";
 import type { Tables } from "@/integrations/supabase/types";
 
 type School = Tables<"schools">;
 type SchoolTemplate = Tables<"school_templates">;
-type CaseRecord = Tables<"cases">;
-type Document = Tables<"documents">;
-type ExtractedField = Tables<"extracted_fields">;
 
 const WIZARD_STEPS = [
   { label: "School" },
@@ -39,7 +38,8 @@ const WIZARD_STEPS = [
 
 export function CreateCaseWizard() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, session } = useAuth();
+  const [draftId] = useState(() => crypto.randomUUID());
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -56,6 +56,14 @@ export function CreateCaseWizard() {
   const [caseSummary, setCaseSummary] = useState("");
   const [caseId, setCaseId] = useState<string | null>(null);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadRegistrationId, setUploadRegistrationId] = useState<string | null>(null);
+  const [uploadInputKey, setUploadInputKey] = useState(0);
+
+  const saveCaseDraftMutation = useServerFn(saveCaseDraftAction);
+  const registerUploadedCaseDocumentMutation = useServerFn(registerUploadedCaseDocumentAction);
+  const finalizeCaseCreationAndEvaluateMutation = useServerFn(
+    finalizeCaseCreationAndEvaluateAction,
+  );
 
   useEffect(() => {
     supabase
@@ -92,75 +100,62 @@ export function CreateCaseWizard() {
       });
   }, [selectedSchoolId]);
 
+  const getServerFnHeaders = () => buildSupabaseServerFnHeaders(session);
+
   const saveDraft = async () => {
-    if (!user) return null;
-    setError("");
-
-    if (caseId) {
-      const { error } = await supabase
-        .from("cases")
-        .update({
-          school_template_id: selectedTemplateId || null,
-          employer_name: employerName || null,
-          role_title: roleTitle || null,
-          work_location: workLocation || null,
-          start_date: startDate || null,
-          end_date: endDate || null,
-          case_summary: caseSummary || null,
-        })
-        .eq("id", caseId);
-      if (error) setError(error.message);
-      return caseId;
-    }
-
-    const { data, error } = await supabase
-      .from("cases")
-      .insert({
-        user_id: user.id,
-        school_template_id: selectedTemplateId || null,
-        employer_name: employerName || null,
-        role_title: roleTitle || null,
-        work_location: workLocation || null,
-        start_date: startDate || null,
-        end_date: endDate || null,
-        case_summary: caseSummary || null,
-        status: "draft",
-      })
-      .select("id")
-      .single();
-
-    if (error) {
-      setError(error.message);
+    if (!user) {
       return null;
     }
 
-    setCaseId(data.id);
-
-    await supabase.from("case_timeline_events").insert({
-      case_id: data.id,
-      event_type: "case_created",
-      title: "Case created",
-      description: "CPT case draft created",
+    const result = await saveCaseDraftMutation({
+      data: {
+        caseId: caseId ?? undefined,
+        draftId,
+        schoolId: selectedSchoolId,
+        schoolTemplateId: selectedTemplateId || null,
+        employerName: employerName || null,
+        roleTitle: roleTitle || null,
+        workLocation: workLocation || null,
+        startDate: startDate || null,
+        endDate: endDate || null,
+        caseSummary: caseSummary || null,
+      },
+      headers: getServerFnHeaders(),
     });
 
-    return data.id;
+    setCaseId(result.caseId);
+    return result.caseId;
   };
 
   const handleNext = async () => {
     setLoading(true);
-    const id = await saveDraft();
-    setLoading(false);
-    if (id || caseId) {
-      setStep((currentStep) => Math.min(currentStep + 1, 4));
+    setError("");
+
+    try {
+      const id = await saveDraft();
+      if (id || caseId) {
+        setStep((currentStep) => Math.min(currentStep + 1, 4));
+      }
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Unable to save this case draft.");
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleUpload = async () => {
-    if (!uploadFile || !caseId || !user) return;
+    if (!uploadFile || !caseId || !user) {
+      return;
+    }
+
     setLoading(true);
     setError("");
 
-    const filePath = `${user.id}/${caseId}/${uploadFile.name}`;
+    const nextUploadRegistrationId = uploadRegistrationId ?? crypto.randomUUID();
+    const filePath = `${user.id}/${caseId}/${nextUploadRegistrationId}/${uploadFile.name}`;
+
+    setUploadRegistrationId(nextUploadRegistrationId);
+
     const { error: uploadError } = await supabase.storage
       .from("case-documents")
       .upload(filePath, uploadFile, { upsert: true });
@@ -171,153 +166,49 @@ export function CreateCaseWizard() {
       return;
     }
 
-    await supabase.from("documents").insert({
-      case_id: caseId,
-      file_name: uploadFile.name,
-      file_path: filePath,
-      document_type: "offer_letter",
-      upload_status: "uploaded",
-    });
+    try {
+      await registerUploadedCaseDocumentMutation({
+        data: {
+          caseId,
+          fileName: uploadFile.name,
+          filePath,
+          documentType: "offer_letter",
+          uploadRegistrationId: nextUploadRegistrationId,
+        },
+        headers: getServerFnHeaders(),
+      });
 
-    await supabase.from("case_timeline_events").insert({
-      case_id: caseId,
-      event_type: "document_uploaded",
-      title: "Offer letter uploaded",
-      description: uploadFile.name,
-    });
-
-    setUploadFile(null);
-    setLoading(false);
+      setUploadFile(null);
+      setUploadRegistrationId(null);
+      setUploadInputKey((currentKey) => currentKey + 1);
+    } catch (uploadMutationError) {
+      setError(
+        uploadMutationError instanceof Error
+          ? uploadMutationError.message
+          : "Unable to register this uploaded document.",
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleConfirm = async () => {
-    if (!caseId || !user) return;
+    if (!caseId || !user) {
+      return;
+    }
 
     setLoading(true);
     setError("");
 
     try {
-      const { data: caseData, error: caseError } = await supabase
-        .from("cases")
-        .select("*")
-        .eq("id", caseId)
-        .single();
-
-      if (caseError || !caseData) {
-        throw new Error(caseError?.message || "Unable to load the current case.");
-      }
-
-      let templateConfig: unknown = null;
-      if (selectedTemplateId) {
-        const { data: template, error: templateError } = await supabase
-          .from("school_templates")
-          .select("config_json")
-          .eq("id", selectedTemplateId)
-          .single();
-
-        if (templateError) {
-          throw new Error(templateError.message);
-        }
-
-        templateConfig = template?.config_json;
-      }
-
-      const { data: documents, error: documentsError } = await supabase
-        .from("documents")
-        .select("*")
-        .eq("case_id", caseId)
-        .order("created_at", { ascending: false });
-
-      if (documentsError) {
-        throw new Error(documentsError.message);
-      }
-
-      const documentIds = (documents || []).map((document) => document.id);
-      let extractedFields: ExtractedField[] = [];
-
-      if (documentIds.length > 0) {
-        const { data: extractedData, error: extractedError } = await supabase
-          .from("extracted_fields")
-          .select("*")
-          .in("document_id", documentIds);
-
-        if (extractedError) {
-          throw new Error(extractedError.message);
-        }
-
-        extractedFields = extractedData || [];
-      }
-
-      const evaluatedRequirements = evaluateCaseRequirements({
-        caseData: caseData as CaseRecord,
-        documents: (documents || []) as Document[],
-        extractedFields,
-        templateConfig,
+      const result = await finalizeCaseCreationAndEvaluateMutation({
+        data: { caseId },
+        headers: getServerFnHeaders(),
       });
 
-      const nextStatus = assertValidCaseStatusTransition(
-        caseData.status,
-        deriveCaseStatusFromRequirements(evaluatedRequirements),
-      );
-
-      const { error: deleteRequirementsError } = await supabase
-        .from("case_requirements")
-        .delete()
-        .eq("case_id", caseId);
-
-      if (deleteRequirementsError) {
-        throw new Error(deleteRequirementsError.message);
-      }
-
-      if (evaluatedRequirements.length > 0) {
-        const { error: insertRequirementsError } = await supabase
-          .from("case_requirements")
-          .insert(evaluatedRequirements);
-
-        if (insertRequirementsError) {
-          throw new Error(insertRequirementsError.message);
-        }
-      }
-
-      const { error: updateCaseError } = await supabase
-        .from("cases")
-        .update({ status: nextStatus })
-        .eq("id", caseId);
-
-      if (updateCaseError) {
-        throw new Error(updateCaseError.message);
-      }
-
-      const statusLabel = nextStatus.replace(/_/g, " ");
-      const [timelineResult, auditResult] = await Promise.all([
-        supabase.from("case_timeline_events").insert({
-          case_id: caseId,
-          event_type: "status_changed",
-          title: `Status changed to ${statusLabel}`,
-          description: "Initial requirement evaluation completed.",
-        }),
-        supabase.from("audit_logs").insert({
-          case_id: caseId,
-          actor_id: user.id,
-          action_type: "status_changed",
-          field_name: "status",
-          old_value: caseData.status,
-          new_value: nextStatus,
-          reason: "Initial deterministic CPT requirement evaluation completed.",
-        }),
-      ]);
-
-      if (timelineResult.error) {
-        throw new Error(timelineResult.error.message);
-      }
-
-      if (auditResult.error) {
-        throw new Error(auditResult.error.message);
-      }
-
-      navigate({ to: "/cases/$caseId", params: { caseId } });
-    } catch (error) {
-      setError(error instanceof Error ? error.message : "Unable to finalize this case.");
+      navigate({ to: "/cases/$caseId", params: { caseId: result.caseId } });
+    } catch (confirmError) {
+      setError(confirmError instanceof Error ? confirmError.message : "Unable to finalize this case.");
     } finally {
       setLoading(false);
     }
@@ -469,9 +360,15 @@ export function CreateCaseWizard() {
                 PDF, JPG, PNG, or Word - up to 25MB
               </p>
               <input
+                key={uploadInputKey}
                 type="file"
                 accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-                onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                onChange={(e) => {
+                  const nextFile = e.target.files?.[0] || null;
+
+                  setUploadFile(nextFile);
+                  setUploadRegistrationId(nextFile ? crypto.randomUUID() : null);
+                }}
                 className="mt-3"
               />
             </div>
@@ -567,3 +464,5 @@ export function CreateCaseWizard() {
     </div>
   );
 }
+
+

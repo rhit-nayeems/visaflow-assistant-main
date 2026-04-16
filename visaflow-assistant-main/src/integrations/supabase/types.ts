@@ -1,4 +1,4 @@
-export type Json =
+﻿export type Json =
   | string
   | number
   | boolean
@@ -245,6 +245,7 @@ export type Database = {
           file_name: string
           file_path: string
           id: string
+          upload_registration_id: string
           upload_status: string
           version_number: number
         }
@@ -255,6 +256,7 @@ export type Database = {
           file_name: string
           file_path: string
           id?: string
+          upload_registration_id: string
           upload_status?: string
           version_number?: number
         }
@@ -265,6 +267,7 @@ export type Database = {
           file_name?: string
           file_path?: string
           id?: string
+          upload_registration_id?: string
           upload_status?: string
           version_number?: number
         }
@@ -487,6 +490,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      finalize_case_requirement_evaluation: {
+        Args: {
+          p_case_id: string
+          p_next_status: Database["public"]["Enums"]["case_status"]
+          p_requirements?: Json
+        }
+        Returns: undefined
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -655,3 +666,4 @@ export const Constants = {
     },
   },
 } as const
+

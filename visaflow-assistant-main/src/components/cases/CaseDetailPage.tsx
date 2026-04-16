@@ -1,7 +1,10 @@
-﻿import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth";
+import { buildSupabaseServerFnHeaders } from "@/lib/server-functions";
+import { addCaseNoteAction } from "@/server/cases/actions";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -39,7 +42,7 @@ interface CaseDetailProps {
 }
 
 export function CaseDetailPage({ caseId }: CaseDetailProps) {
-  const { user } = useAuth();
+  const { user, session } = useAuth();
   const [caseData, setCaseData] = useState<Case | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [requirements, setRequirements] = useState<Requirement[]>([]);
@@ -49,6 +52,10 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
   const [loading, setLoading] = useState(true);
   const [newNote, setNewNote] = useState("");
   const [noteLoading, setNoteLoading] = useState(false);
+  const [noteError, setNoteError] = useState("");
+  const [pendingNoteId, setPendingNoteId] = useState<string | null>(null);
+
+  const addCaseNoteMutation = useServerFn(addCaseNoteAction);
 
   const load = useCallback(async () => {
     const [caseRes, docsRes, reqsRes, tlRes, auditRes, notesRes] = await Promise.all([
@@ -89,22 +96,34 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
   }, [load]);
 
   const addNote = async () => {
-    if (!newNote.trim() || !user) return;
+    if (!newNote.trim() || !user) {
+      return;
+    }
+
+    const noteId = pendingNoteId ?? crypto.randomUUID();
+
     setNoteLoading(true);
-    await supabase.from("case_notes").insert({
-      case_id: caseId,
-      user_id: user.id,
-      content: newNote.trim(),
-    });
-    await supabase.from("case_timeline_events").insert({
-      case_id: caseId,
-      event_type: "note_added",
-      title: "Note added",
-      description: newNote.trim().slice(0, 100),
-    });
-    setNewNote("");
-    setNoteLoading(false);
-    load();
+    setNoteError("");
+    setPendingNoteId(noteId);
+
+    try {
+      await addCaseNoteMutation({
+        data: {
+          caseId,
+          noteId,
+          content: newNote.trim(),
+        },
+        headers: buildSupabaseServerFnHeaders(session),
+      });
+      setNewNote("");
+      setPendingNoteId(null);
+      setNoteError("");
+      await load();
+    } catch (error) {
+      setNoteError(error instanceof Error ? error.message : "Unable to add this note right now.");
+    } finally {
+      setNoteLoading(false);
+    }
   };
 
   if (loading) {
@@ -412,10 +431,21 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
 
         <TabsContent value="notes">
           <div className="space-y-4">
+            {noteError && (
+              <AlertBanner
+                variant="error"
+                title="Note not saved"
+                description={noteError}
+              />
+            )}
             <div className="flex gap-2">
               <textarea
                 value={newNote}
-                onChange={(e) => setNewNote(e.target.value)}
+                onChange={(e) => {
+                  setNewNote(e.target.value);
+                  setNoteError("");
+                  setPendingNoteId(null);
+                }}
                 placeholder="Add a note..."
                 className="flex-1 min-h-[60px] rounded-md border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               />
@@ -451,3 +481,4 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
     </div>
   );
 }
+
