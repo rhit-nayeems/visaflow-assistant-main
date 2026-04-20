@@ -1,4 +1,4 @@
-import type {
+﻿import type {
   AuditLogInsert,
   CaseStatus,
   CaseWorkflowContext,
@@ -11,6 +11,9 @@ interface StatusHistoryInput {
   nextStatus: CaseStatus;
   description: string;
   reason: string;
+  auditActionType?: string;
+  timelineEventType?: string;
+  timelineTitle?: string;
 }
 
 const logHistoryWriteFailure = (operation: string, error: unknown) => {
@@ -28,10 +31,7 @@ export const writeCaseTimelineEvent = async (
   }
 };
 
-export const writeCaseAuditLog = async (
-  context: CaseWorkflowContext,
-  entry: AuditLogInsert,
-) => {
+export const writeCaseAuditLog = async (context: CaseWorkflowContext, entry: AuditLogInsert) => {
   const { error } = await context.supabase.from("audit_logs").insert(entry);
 
   if (error) {
@@ -48,14 +48,14 @@ export const writeStatusChangeHistory = async (
   await Promise.all([
     writeCaseTimelineEvent(context, {
       case_id: input.caseId,
-      event_type: "status_changed",
-      title: `Status changed to ${statusLabel}`,
+      event_type: input.timelineEventType ?? "status_changed",
+      title: input.timelineTitle ?? `Status changed to ${statusLabel}`,
       description: input.description,
     }),
     writeCaseAuditLog(context, {
       case_id: input.caseId,
       actor_id: context.userId,
-      action_type: "status_changed",
+      action_type: input.auditActionType ?? "status_changed",
       field_name: "status",
       old_value: input.previousStatus,
       new_value: input.nextStatus,

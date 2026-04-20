@@ -1,6 +1,7 @@
 const REQUIRED_CASE_WORKFLOW_MIGRATIONS = [
   "20260416103000_fix_case_finalize_atomicity_and_document_registration.sql",
   "20260419113000_register_case_document_rpc.sql",
+  "20260420120000_persist_case_document_reevaluation_flag.sql",
 ] as const;
 
 const CASE_WORKFLOW_SCHEMA_DRIFT_CODES = new Set(["PGRST202", "42883", "42703", "42P01", "42704"]);
@@ -29,6 +30,15 @@ const buildDatabaseErrorText = (error: CaseWorkflowDatabaseErrorLike) =>
     .join(" ")
     .toLowerCase();
 
+const isPostgrestMissingColumnSchemaCacheError = (
+  error: CaseWorkflowDatabaseErrorLike,
+  options: { table: string; column: string },
+) =>
+  error.code === "PGRST204" &&
+  buildDatabaseErrorText(error).includes(
+    `could not find the '${options.column}' column of '${options.table}' in the schema cache`,
+  );
+
 export const isCaseWorkflowSchemaDriftError = (
   error: unknown,
 ): error is CaseWorkflowDatabaseErrorLike => {
@@ -51,7 +61,14 @@ export const isCaseWorkflowSchemaDriftError = (
     databaseErrorText.includes("register_case_document") ||
     databaseErrorText.includes('column "upload_registration_id" does not exist') ||
     databaseErrorText.includes("column upload_registration_id does not exist") ||
-    databaseErrorText.includes('has no field "upload_registration_id"')
+    databaseErrorText.includes('has no field "upload_registration_id"') ||
+    databaseErrorText.includes('column "needs_document_reevaluation" does not exist') ||
+    databaseErrorText.includes("column needs_document_reevaluation does not exist") ||
+    databaseErrorText.includes('has no field "needs_document_reevaluation"') ||
+    isPostgrestMissingColumnSchemaCacheError(error, {
+      table: "cases",
+      column: "needs_document_reevaluation",
+    })
   );
 };
 

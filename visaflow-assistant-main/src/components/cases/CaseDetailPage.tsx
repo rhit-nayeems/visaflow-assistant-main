@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { formatDistanceToNow } from "date-fns";
@@ -94,7 +94,6 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
   const [submitLoading, setSubmitLoading] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [submitNotice, setSubmitNotice] = useState("");
-  const [hasPendingDocumentChanges, setHasPendingDocumentChanges] = useState(false);
 
   const addCaseNoteMutation = useServerFn(addCaseNoteAction);
   const registerUploadedCaseDocumentMutation = useServerFn(registerUploadedCaseDocumentAction);
@@ -226,7 +225,6 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
         : `${documentLabel} upload confirmed. No duplicate version was created.`;
 
       setUploadNotice(uploadSummary);
-      setHasPendingDocumentChanges(true);
       resetUploadSelection();
       await load();
     } catch (error) {
@@ -255,8 +253,6 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
         data: { caseId },
         headers: getServerFnHeaders(),
       });
-
-      setHasPendingDocumentChanges(false);
       setUploadNotice("");
       setReevaluateNotice(
         result.status === previousStatus
@@ -282,7 +278,6 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
     setSubmitError("");
     setSubmitNotice("");
     resetUploadSelection();
-    setHasPendingDocumentChanges(false);
   };
 
   const handleSubmitForReview = async () => {
@@ -295,13 +290,16 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
     setSubmitNotice("");
 
     try {
+      const previousStatus = caseData.status;
       await submitCaseForReviewMutation({
         data: { caseId },
         headers: getServerFnHeaders(),
       });
-
-      setHasPendingDocumentChanges(false);
-      setSubmitNotice("Case submitted for review. Your international office can now review it.");
+      setSubmitNotice(
+        previousStatus === "change_pending"
+          ? "Case resubmitted for review. Your international office can now review the updated case."
+          : "Case submitted for review. Your international office can now review it.",
+      );
       await load();
     } catch (error) {
       setSubmitError(
@@ -349,9 +347,15 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
   );
   const selectedTypeNextVersion = selectedTypeLatestVersion + 1;
   const isReadyForSubmission = caseData.status === "ready_for_submission";
-  const canSubmitForReview = isReadyForSubmission && !hasPendingDocumentChanges;
+  const isApproved = caseData.status === "approved";
+  const isDenied = caseData.status === "denied";
+  const canResubmitForReview = caseData.status === "change_pending";
+  const needsDocumentReevaluation = caseData.needs_document_reevaluation;
+  const canSubmitForReview =
+    (isReadyForSubmission || canResubmitForReview) && !needsDocumentReevaluation;
+  const submitButtonLabel = canResubmitForReview ? "Resubmit for review" : "Submit for review";
   const submitHelperText = (() => {
-    if (hasPendingDocumentChanges) {
+    if (needsDocumentReevaluation) {
       return "Re-run evaluation after recent document uploads before submitting this case.";
     }
 
@@ -359,8 +363,20 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
       return "Submit this case to hand it off for school review.";
     }
 
+    if (canResubmitForReview) {
+      return "Address the requested or pending changes, then resubmit this case for review.";
+    }
+
     if (caseData.status === "submitted") {
       return "This case has already been submitted and is waiting for review.";
+    }
+
+    if (isApproved) {
+      return "This case has been approved. Review the timeline or audit log for any reviewer notes.";
+    }
+
+    if (isDenied) {
+      return "This case has been denied. Review the timeline and audit log before starting another review cycle.";
     }
 
     return "Resolve blockers and re-run evaluation until the case is ready for submission.";
@@ -391,9 +407,12 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
           </p>
         </div>
         <div className="flex max-w-xs flex-col items-end gap-2 text-right">
-          <Button onClick={handleSubmitForReview} disabled={submitLoading || !canSubmitForReview}>
+          <Button
+            onClick={handleSubmitForReview}
+            disabled={uploadLoading || reevaluateLoading || submitLoading || !canSubmitForReview}
+          >
             {submitLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            Submit for review
+            {submitButtonLabel}
           </Button>
           <p className="text-xs text-muted-foreground">{submitHelperText}</p>
           <Button
@@ -412,11 +431,25 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
         </div>
       </div>
 
+      {isApproved && (
+        <AlertBanner
+          variant="success"
+          title="Case approved"
+          description="Your international office approved this case. Review the timeline or audit log for any reviewer notes."
+        />
+      )}
+      {isDenied && (
+        <AlertBanner
+          variant="error"
+          title="Case denied"
+          description="Your international office denied this case. Review the timeline and audit log for the reviewer rationale."
+        />
+      )}
       {isChangePending && (
         <AlertBanner
           variant="warning"
-          title="Changes detected - reapproval may be needed"
-          description="Core case fields were modified after approval. Contact your DSO to verify if resubmission is required."
+          title="Changes pending"
+          description="Your case needs another review cycle. Review the timeline and audit log, update the case, and resubmit when ready."
         />
       )}
       {blockers.length > 0 && !isChangePending && (
@@ -427,13 +460,33 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
         />
       )}
       {nextAction && <AlertBanner variant="info" title="Next step" description={nextAction} />}
+      {needsDocumentReevaluation && (
+        <AlertBanner
+          variant="warning"
+          title="Evaluation refresh required"
+          description="Recent document changes were recorded. Re-run deterministic evaluation before submitting this case for review."
+          action={
+            canRerunEvaluation ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleReevaluate}
+                disabled={reevaluateLoading}
+              >
+                {reevaluateLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                Re-run now
+              </Button>
+            ) : undefined
+          }
+        />
+      )}
       {uploadNotice && (
         <AlertBanner
-          variant={hasPendingDocumentChanges ? "info" : "success"}
+          variant={needsDocumentReevaluation ? "info" : "success"}
           title="Document update recorded"
           description={uploadNotice}
           action={
-            hasPendingDocumentChanges && canRerunEvaluation ? (
+            needsDocumentReevaluation && canRerunEvaluation ? (
               <Button
                 variant="outline"
                 size="sm"
@@ -885,6 +938,3 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
     </div>
   );
 }
-
-
-

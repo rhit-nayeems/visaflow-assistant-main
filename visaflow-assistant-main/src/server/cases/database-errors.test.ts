@@ -37,6 +37,58 @@ test("treats missing upload_registration_id column errors as schema drift", () =
   assert.equal(normalized.message, formatCaseWorkflowSchemaDriftMessage("Case finalization"));
 });
 
+test("treats missing needs_document_reevaluation column errors as schema drift", () => {
+  const error = {
+    code: "42703",
+    message: 'column "needs_document_reevaluation" does not exist',
+  };
+
+  assert.equal(isCaseWorkflowSchemaDriftError(error), true);
+
+  const normalized = normalizeCaseWorkflowDatabaseError(error, {
+    operationLabel: "Case access",
+    fallbackMessage: "Unable to load this case.",
+  });
+
+  assert.equal(normalized.message, formatCaseWorkflowSchemaDriftMessage("Case access"));
+});
+
+test("treats PostgREST schema-cache misses for needs_document_reevaluation as schema drift", () => {
+  const error = {
+    code: "PGRST204",
+    message:
+      "Could not find the 'needs_document_reevaluation' column of 'cases' in the schema cache",
+  };
+
+  assert.equal(isCaseWorkflowSchemaDriftError(error), true);
+
+  const normalized = normalizeCaseWorkflowDatabaseError(error, {
+    operationLabel: "Case access",
+    fallbackMessage: "Unable to load this case.",
+  });
+
+  assert.equal(normalized.message, formatCaseWorkflowSchemaDriftMessage("Case access"));
+});
+
+test("does not treat unrelated PostgREST schema-cache misses as schema drift", () => {
+  const error = {
+    code: "PGRST204",
+    message: "Could not find the 'status' column of 'cases' in the schema cache",
+  };
+
+  assert.equal(isCaseWorkflowSchemaDriftError(error), false);
+
+  const normalized = normalizeCaseWorkflowDatabaseError(error, {
+    operationLabel: "Case access",
+    fallbackMessage: "Unable to load this case.",
+  });
+
+  assert.equal(
+    normalized.message,
+    "Could not find the 'status' column of 'cases' in the schema cache",
+  );
+});
+
 test("preserves non-schema-drift database messages", () => {
   const normalized = normalizeCaseWorkflowDatabaseError(
     {

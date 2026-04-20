@@ -1,4 +1,4 @@
-﻿export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
+export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
 export type Database = {
   // Allows to automatically instantiate createClient with right options
@@ -179,6 +179,7 @@ export type Database = {
           employer_name: string | null;
           end_date: string | null;
           id: string;
+          needs_document_reevaluation: boolean;
           process_type: string;
           risk_level: string | null;
           role_title: string | null;
@@ -195,6 +196,7 @@ export type Database = {
           employer_name?: string | null;
           end_date?: string | null;
           id?: string;
+          needs_document_reevaluation?: boolean;
           process_type?: string;
           risk_level?: string | null;
           role_title?: string | null;
@@ -211,6 +213,7 @@ export type Database = {
           employer_name?: string | null;
           end_date?: string | null;
           id?: string;
+          needs_document_reevaluation?: boolean;
           process_type?: string;
           risk_level?: string | null;
           role_title?: string | null;

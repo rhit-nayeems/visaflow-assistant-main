@@ -473,7 +473,7 @@ export const getCaseNextRecommendedAction = (
   }
 
   if (status === "change_pending") {
-    return "Review the changed fields and confirm whether resubmission is required.";
+    return "Review the requested or pending changes, update the case, and resubmit when ready.";
   }
 
   if (summary.blockerCount > 0) {

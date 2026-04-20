@@ -20,6 +20,8 @@ import { Route as AuthenticatedDashboardRouteImport } from './routes/_authentica
 import { Route as AuthenticatedCasesIndexRouteImport } from './routes/_authenticated/cases/index'
 import { Route as AuthenticatedCasesNewRouteImport } from './routes/_authenticated/cases/new'
 import { Route as AuthenticatedCasesCaseIdRouteImport } from './routes/_authenticated/cases/$caseId'
+import { Route as AuthenticatedReviewCasesIndexRouteImport } from './routes/_authenticated/review/cases/index'
+import { Route as AuthenticatedReviewCasesCaseIdRouteImport } from './routes/_authenticated/review/cases/$caseId'
 
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
@@ -76,6 +78,18 @@ const AuthenticatedCasesCaseIdRoute =
     path: '/cases/$caseId',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedReviewCasesIndexRoute =
+  AuthenticatedReviewCasesIndexRouteImport.update({
+    id: '/review/cases/',
+    path: '/review/cases/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedReviewCasesCaseIdRoute =
+  AuthenticatedReviewCasesCaseIdRouteImport.update({
+    id: '/review/cases/$caseId',
+    path: '/review/cases/$caseId',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -88,6 +102,8 @@ export interface FileRoutesByFullPath {
   '/cases/$caseId': typeof AuthenticatedCasesCaseIdRoute
   '/cases/new': typeof AuthenticatedCasesNewRoute
   '/cases/': typeof AuthenticatedCasesIndexRoute
+  '/review/cases/$caseId': typeof AuthenticatedReviewCasesCaseIdRoute
+  '/review/cases/': typeof AuthenticatedReviewCasesIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -100,6 +116,8 @@ export interface FileRoutesByTo {
   '/cases/$caseId': typeof AuthenticatedCasesCaseIdRoute
   '/cases/new': typeof AuthenticatedCasesNewRoute
   '/cases': typeof AuthenticatedCasesIndexRoute
+  '/review/cases/$caseId': typeof AuthenticatedReviewCasesCaseIdRoute
+  '/review/cases': typeof AuthenticatedReviewCasesIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -114,6 +132,8 @@ export interface FileRoutesById {
   '/_authenticated/cases/$caseId': typeof AuthenticatedCasesCaseIdRoute
   '/_authenticated/cases/new': typeof AuthenticatedCasesNewRoute
   '/_authenticated/cases/': typeof AuthenticatedCasesIndexRoute
+  '/_authenticated/review/cases/$caseId': typeof AuthenticatedReviewCasesCaseIdRoute
+  '/_authenticated/review/cases/': typeof AuthenticatedReviewCasesIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -128,6 +148,8 @@ export interface FileRouteTypes {
     | '/cases/$caseId'
     | '/cases/new'
     | '/cases/'
+    | '/review/cases/$caseId'
+    | '/review/cases/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -140,6 +162,8 @@ export interface FileRouteTypes {
     | '/cases/$caseId'
     | '/cases/new'
     | '/cases'
+    | '/review/cases/$caseId'
+    | '/review/cases'
   id:
     | '__root__'
     | '/'
@@ -153,6 +177,8 @@ export interface FileRouteTypes {
     | '/_authenticated/cases/$caseId'
     | '/_authenticated/cases/new'
     | '/_authenticated/cases/'
+    | '/_authenticated/review/cases/$caseId'
+    | '/_authenticated/review/cases/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -243,6 +269,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedCasesCaseIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/review/cases/': {
+      id: '/_authenticated/review/cases/'
+      path: '/review/cases'
+      fullPath: '/review/cases/'
+      preLoaderRoute: typeof AuthenticatedReviewCasesIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/review/cases/$caseId': {
+      id: '/_authenticated/review/cases/$caseId'
+      path: '/review/cases/$caseId'
+      fullPath: '/review/cases/$caseId'
+      preLoaderRoute: typeof AuthenticatedReviewCasesCaseIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
   }
 }
 
@@ -252,6 +292,8 @@ interface AuthenticatedRouteChildren {
   AuthenticatedCasesCaseIdRoute: typeof AuthenticatedCasesCaseIdRoute
   AuthenticatedCasesNewRoute: typeof AuthenticatedCasesNewRoute
   AuthenticatedCasesIndexRoute: typeof AuthenticatedCasesIndexRoute
+  AuthenticatedReviewCasesCaseIdRoute: typeof AuthenticatedReviewCasesCaseIdRoute
+  AuthenticatedReviewCasesIndexRoute: typeof AuthenticatedReviewCasesIndexRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
@@ -260,6 +302,8 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedCasesCaseIdRoute: AuthenticatedCasesCaseIdRoute,
   AuthenticatedCasesNewRoute: AuthenticatedCasesNewRoute,
   AuthenticatedCasesIndexRoute: AuthenticatedCasesIndexRoute,
+  AuthenticatedReviewCasesCaseIdRoute: AuthenticatedReviewCasesCaseIdRoute,
+  AuthenticatedReviewCasesIndexRoute: AuthenticatedReviewCasesIndexRoute,
 }
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(

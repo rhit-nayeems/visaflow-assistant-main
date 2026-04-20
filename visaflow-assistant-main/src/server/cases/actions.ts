@@ -2,9 +2,12 @@
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import {
   validateAddCaseNoteInput,
+  validateApproveCaseInput,
+  validateDenyCaseInput,
   validateFinalizeCaseCreationAndEvaluateInput,
   validateReevaluateCaseAfterUploadsInput,
   validateRegisterUploadedCaseDocumentInput,
+  validateRequestCaseChangesInput,
   validateSaveCaseDraftInput,
   validateSubmitCaseForReviewInput,
 } from "./validation";
@@ -76,6 +79,51 @@ export const submitCaseForReviewAction = createServerFn({ method: "POST" })
     const { submitCaseForReview } = await import("./workflows.server");
 
     return submitCaseForReview(
+      {
+        supabase: context.supabase,
+        userId: context.userId,
+      },
+      data,
+    );
+  });
+
+export const approveCaseAction = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(validateApproveCaseInput)
+  .handler(async ({ context, data }) => {
+    const { approveCase } = await import("./workflows.server");
+
+    return approveCase(
+      {
+        supabase: context.supabase,
+        userId: context.userId,
+      },
+      data,
+    );
+  });
+
+export const denyCaseAction = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(validateDenyCaseInput)
+  .handler(async ({ context, data }) => {
+    const { denyCase } = await import("./workflows.server");
+
+    return denyCase(
+      {
+        supabase: context.supabase,
+        userId: context.userId,
+      },
+      data,
+    );
+  });
+
+export const requestCaseChangesAction = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(validateRequestCaseChangesInput)
+  .handler(async ({ context, data }) => {
+    const { requestCaseChanges } = await import("./workflows.server");
+
+    return requestCaseChanges(
       {
         supabase: context.supabase,
         userId: context.userId,

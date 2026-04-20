@@ -33,6 +33,21 @@ export interface SubmitCaseForReviewInput {
   caseId: string;
 }
 
+export interface ApproveCaseInput {
+  caseId: string;
+  reviewerComment: string | null;
+}
+
+export interface DenyCaseInput {
+  caseId: string;
+  reviewerComment: string;
+}
+
+export interface RequestCaseChangesInput {
+  caseId: string;
+  reviewerComment: string;
+}
+
 export interface AddCaseNoteInput {
   caseId: string;
   noteId?: string;
@@ -177,6 +192,39 @@ export const validateSubmitCaseForReviewInput = (input: unknown): SubmitCaseForR
 
   return {
     caseId: parseRequiredString(input, "caseId", "Case"),
+  };
+};
+
+export const validateApproveCaseInput = (input: unknown): ApproveCaseInput => {
+  if (!isRecord(input)) {
+    throw new Error("Case approval input is required.");
+  }
+
+  return {
+    caseId: parseRequiredString(input, "caseId", "Case"),
+    reviewerComment: parseNullableString(input, "reviewerComment", "Reviewer comment"),
+  };
+};
+
+export const validateDenyCaseInput = (input: unknown): DenyCaseInput => {
+  if (!isRecord(input)) {
+    throw new Error("Case denial input is required.");
+  }
+
+  return {
+    caseId: parseRequiredString(input, "caseId", "Case"),
+    reviewerComment: parseRequiredString(input, "reviewerComment", "Reviewer comment"),
+  };
+};
+
+export const validateRequestCaseChangesInput = (input: unknown): RequestCaseChangesInput => {
+  if (!isRecord(input)) {
+    throw new Error("Case change request input is required.");
+  }
+
+  return {
+    caseId: parseRequiredString(input, "caseId", "Case"),
+    reviewerComment: parseRequiredString(input, "reviewerComment", "Reviewer comment"),
   };
 };
 
