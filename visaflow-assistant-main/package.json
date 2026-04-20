@@ -8,6 +8,10 @@
     "build": "vite build && tsc --noEmit",
     "build:dev": "vite build --mode development && tsc --noEmit",
     "preview": "vite preview",
+    "cf:login": "wrangler login",
+    "cf:whoami": "wrangler whoami",
+    "cf:typegen": "wrangler types",
+    "deploy": "npm run build && wrangler deploy",
     "test:cases": "node --test --experimental-strip-types src/server/cases/database-errors.test.ts src/server/cases/document-registration.test.ts src/server/cases/workflows.server.test.ts",
     "lint": "eslint .",
     "format": "prettier --write ."
@@ -83,7 +87,7 @@
     "prettier": "^3.7.3",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.56.1",
-    "vite": "^7.3.1"
+    "vite": "^7.3.1",
+    "wrangler": "^4.84.0"
   }
 }
-
