@@ -487,6 +487,18 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      apply_reviewer_case_decision: {
+        Args: {
+          p_case_id: string;
+          p_next_status: Database["public"]["Enums"]["case_status"];
+          p_reviewer_comment: string | null;
+        };
+        Returns: {
+          case_id: string;
+          next_status: Database["public"]["Enums"]["case_status"];
+          previous_status: Database["public"]["Enums"]["case_status"];
+        }[];
+      };
       finalize_case_requirement_evaluation: {
         Args: {
           p_case_id: string;

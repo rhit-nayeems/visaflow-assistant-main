@@ -21,6 +21,7 @@ import type {
 
 const FINALIZE_CASE_REQUIREMENT_EVALUATION_RPC = "finalize_case_requirement_evaluation";
 const REGISTER_CASE_DOCUMENT_RPC = "register_case_document";
+const REVIEWER_CASE_DECISION_RPC = "apply_reviewer_case_decision";
 
 const buildCaseRecord = (
   status: CaseRecord["status"],
@@ -90,6 +91,89 @@ const buildReadyCaseDocuments = (): {
     extractedFields: [
       buildExtractedFieldRecord(offerLetter.id, "job_duties", "Build product features"),
     ],
+  };
+};
+
+const buildReviewerDecisionHistory = ({
+  caseId,
+  reviewerComment,
+  reviewerUserId,
+  nextStatus,
+}: {
+  caseId: string;
+  reviewerComment: string | null;
+  reviewerUserId: string;
+  nextStatus: Extract<CaseRecord["status"], "approved" | "denied" | "change_pending">;
+}): {
+  auditEntry: AuditLogInsert;
+  timelineEvent: TimelineEventInsert;
+} => {
+  const normalizedComment =
+    typeof reviewerComment === "string" && reviewerComment.trim().length > 0
+      ? reviewerComment.trim()
+      : null;
+
+  if (nextStatus === "approved") {
+    return {
+      timelineEvent: {
+        case_id: caseId,
+        event_type: "status_changed",
+        title: "Case approved",
+        description: normalizedComment
+          ? `School review approved this case. Reviewer note: ${normalizedComment}`
+          : "School review approved this case.",
+      },
+      auditEntry: {
+        case_id: caseId,
+        actor_id: reviewerUserId,
+        action_type: "review_approved",
+        field_name: "status",
+        old_value: "submitted",
+        new_value: "approved",
+        reason: normalizedComment
+          ? `Reviewer approved the submitted case. Comment: ${normalizedComment}`
+          : "Reviewer approved the submitted case.",
+      },
+    };
+  }
+
+  if (nextStatus === "denied") {
+    return {
+      timelineEvent: {
+        case_id: caseId,
+        event_type: "status_changed",
+        title: "Case denied",
+        description: `School review denied this case. Reviewer note: ${normalizedComment}`,
+      },
+      auditEntry: {
+        case_id: caseId,
+        actor_id: reviewerUserId,
+        action_type: "review_denied",
+        field_name: "status",
+        old_value: "submitted",
+        new_value: "denied",
+        reason: `Reviewer denied the submitted case. Comment: ${normalizedComment}`,
+      },
+    };
+  }
+
+  return {
+    timelineEvent: {
+      case_id: caseId,
+      event_type: "status_changed",
+      title: "Changes requested",
+      description:
+        "School review requested changes before approval. Reviewer note: " + normalizedComment,
+    },
+    auditEntry: {
+      case_id: caseId,
+      actor_id: reviewerUserId,
+      action_type: "review_changes_requested",
+      field_name: "status",
+      old_value: "submitted",
+      new_value: "change_pending",
+      reason: "Reviewer requested changes on the submitted case. Comment: " + normalizedComment,
+    },
   };
 };
 
@@ -201,125 +285,118 @@ const buildReviewerWorkflowContext = (
     reviewerHasSchoolAdminRole?: boolean;
     reviewerUserId?: string;
     caseOverrides?: Partial<CaseRecord>;
+    staleReviewerDecisionStatus?: Extract<
+      CaseRecord["status"],
+      "approved" | "denied" | "change_pending"
+    >;
   } = {},
 ): {
   context: CaseWorkflowContext;
   caseRecord: CaseRecord;
   auditEntries: AuditLogInsert[];
   caseUpdates: Array<Partial<CaseRecord>>;
+  reviewerDecisionCalls: Array<{
+    p_case_id: string;
+    p_next_status: string;
+    p_reviewer_comment: string | null;
+  }>;
   timelineEvents: TimelineEventInsert[];
   reviewerUserId: string;
 } => {
   const reviewerUserId = options.reviewerUserId ?? "reviewer-123";
   const reviewerHasSchoolAdminRole = options.reviewerHasSchoolAdminRole ?? true;
+  const staleReviewerDecisionStatus = options.staleReviewerDecisionStatus ?? null;
   const caseRecord = buildCaseRecord(status, options.caseOverrides);
   const timelineEvents: TimelineEventInsert[] = [];
   const auditEntries: AuditLogInsert[] = [];
   const caseUpdates: Array<Partial<CaseRecord>> = [];
+  const reviewerDecisionCalls: Array<{
+    p_case_id: string;
+    p_next_status: string;
+    p_reviewer_comment: string | null;
+  }> = [];
 
   const supabase = {
     from(table: string) {
-      if (table === "cases") {
-        return createCasesTable();
-      }
-
-      if (table === "user_roles") {
-        return createUserRolesTable();
-      }
-
-      if (table === "case_timeline_events") {
-        return {
-          async insert(event: TimelineEventInsert) {
-            timelineEvents.push(event);
-            return { error: null };
-          },
-        };
-      }
-
-      if (table === "audit_logs") {
-        return {
-          async insert(entry: AuditLogInsert) {
-            auditEntries.push(entry);
-            return { error: null };
-          },
-        };
-      }
-
       throw new Error(`Unexpected table access: ${table}`);
     },
-  } as unknown as CaseWorkflowContext["supabase"];
+    rpc(fn: string, args: Record<string, unknown>) {
+      if (fn !== REVIEWER_CASE_DECISION_RPC) {
+        throw new Error(`Unexpected RPC call: ${fn}`);
+      }
 
-  function createUserRolesTable() {
-    const filters: Record<string, string> = {};
+      reviewerDecisionCalls.push({
+        p_case_id: String(args.p_case_id),
+        p_next_status: String(args.p_next_status),
+        p_reviewer_comment:
+          typeof args.p_reviewer_comment === "string" ? args.p_reviewer_comment : null,
+      });
 
-    return {
-      select() {
-        return this;
-      },
-      eq(column: string, value: string) {
-        filters[column] = value;
-        return this;
-      },
-      async maybeSingle() {
-        const matchesReviewer = filters.user_id === reviewerUserId;
-        const matchesRole = filters.role === "school_admin";
-
-        return {
-          data:
-            reviewerHasSchoolAdminRole && matchesReviewer && matchesRole
-              ? { role: "school_admin" }
-              : null,
-          error: null,
-        };
-      },
-    };
-  }
-
-  function createCasesTable() {
-    let mode: "select" | "update" | null = null;
-    let filters: Record<string, string> = {};
-    let mutation: Partial<CaseRecord> | null = null;
-
-    return {
-      select() {
-        mode = "select";
-        filters = {};
-        return this;
-      },
-      update(values: Partial<CaseRecord>) {
-        mode = "update";
-        filters = {};
-        mutation = values;
-        caseUpdates.push(values);
-        return this;
-      },
-      eq(column: string, value: string) {
-        filters[column] = value;
-
-        if (mode === "update" && filters.id) {
-          const matchesCase = caseRecord.id === filters.id;
-
-          if (matchesCase && mutation) {
-            Object.assign(caseRecord, mutation);
+      return {
+        async single() {
+          if (!reviewerHasSchoolAdminRole) {
+            return {
+              data: null,
+              error: new Error("Reviewer access requires the school_admin role."),
+            };
           }
 
-          return Promise.resolve({
-            error: matchesCase
-              ? null
-              : new Error("Case not found or you do not have reviewer access."),
-          });
-        }
+          if (staleReviewerDecisionStatus) {
+            caseRecord.status = staleReviewerDecisionStatus;
 
-        return this;
-      },
-      async maybeSingle() {
-        return {
-          data: caseRecord.id === filters.id ? caseRecord : null,
-          error: null,
-        };
-      },
-    };
-  }
+            return {
+              data: null,
+              error: new Error("Only submitted cases can be reviewed."),
+            };
+          }
+
+          if (caseRecord.id !== args.p_case_id || caseRecord.status !== "submitted") {
+            return {
+              data: null,
+              error: new Error("Only submitted cases can be reviewed."),
+            };
+          }
+
+          const nextStatus = args.p_next_status as Extract<
+            CaseRecord["status"],
+            "approved" | "denied" | "change_pending"
+          >;
+          const reviewerComment =
+            typeof args.p_reviewer_comment === "string" ? args.p_reviewer_comment : null;
+
+          if (
+            (nextStatus === "denied" || nextStatus === "change_pending") &&
+            reviewerComment === null
+          ) {
+            return {
+              data: null,
+              error: new Error("Reviewer comment is required."),
+            };
+          }
+
+          caseRecord.status = nextStatus;
+
+          const history = buildReviewerDecisionHistory({
+            caseId: caseRecord.id,
+            reviewerComment,
+            reviewerUserId,
+            nextStatus,
+          });
+          timelineEvents.push(history.timelineEvent);
+          auditEntries.push(history.auditEntry);
+
+          return {
+            data: {
+              case_id: caseRecord.id,
+              previous_status: "submitted",
+              next_status: caseRecord.status,
+            },
+            error: null,
+          };
+        },
+      };
+    },
+  } as unknown as CaseWorkflowContext["supabase"];
 
   return {
     context: {
@@ -329,6 +406,7 @@ const buildReviewerWorkflowContext = (
     caseRecord,
     auditEntries,
     caseUpdates,
+    reviewerDecisionCalls,
     timelineEvents,
     reviewerUserId,
   };
@@ -782,7 +860,14 @@ test("review approval moves a submitted case to approved and records reviewer hi
 
   assert.equal(result.status, "approved");
   assert.equal(workflow.caseRecord.status, "approved");
-  assert.deepEqual(workflow.caseUpdates, [{ status: "approved" }]);
+  assert.deepEqual(workflow.reviewerDecisionCalls, [
+    {
+      p_case_id: workflow.caseRecord.id,
+      p_next_status: "approved",
+      p_reviewer_comment: "All CPT requirements are satisfied.",
+    },
+  ]);
+  assert.deepEqual(workflow.caseUpdates, []);
   assert.deepEqual(workflow.timelineEvents[0], {
     case_id: workflow.caseRecord.id,
     event_type: "status_changed",
@@ -811,6 +896,13 @@ test("review denial moves a submitted case to denied", async () => {
 
   assert.equal(result.status, "denied");
   assert.equal(workflow.caseRecord.status, "denied");
+  assert.deepEqual(workflow.reviewerDecisionCalls, [
+    {
+      p_case_id: workflow.caseRecord.id,
+      p_next_status: "denied",
+      p_reviewer_comment: "The offer details do not match school policy.",
+    },
+  ]);
   assert.equal(workflow.timelineEvents[0]?.title, "Case denied");
   assert.equal(workflow.auditEntries[0]?.action_type, "review_denied");
 });
@@ -825,6 +917,14 @@ test("requesting changes moves a submitted case to change pending", async () => 
 
   assert.equal(result.status, "change_pending");
   assert.equal(workflow.caseRecord.status, "change_pending");
+  assert.deepEqual(workflow.reviewerDecisionCalls, [
+    {
+      p_case_id: workflow.caseRecord.id,
+      p_next_status: "change_pending",
+      p_reviewer_comment:
+        "Please upload an updated advisor approval and clarify the work location.",
+    },
+  ]);
   assert.equal(workflow.timelineEvents[0]?.title, "Changes requested");
   assert.equal(workflow.auditEntries[0]?.action_type, "review_changes_requested");
 });
@@ -845,6 +945,13 @@ test("reviewer decisions reject callers without the school_admin role", async ()
 
   assert.equal(workflow.caseRecord.status, "submitted");
   assert.equal(workflow.caseUpdates.length, 0);
+  assert.deepEqual(workflow.reviewerDecisionCalls, [
+    {
+      p_case_id: workflow.caseRecord.id,
+      p_next_status: "approved",
+      p_reviewer_comment: null,
+    },
+  ]);
   assert.equal(workflow.timelineEvents.length, 0);
   assert.equal(workflow.auditEntries.length, 0);
 });
@@ -863,6 +970,73 @@ test("reviewer decisions reject cases that are no longer submitted", async () =>
 
   assert.equal(workflow.caseRecord.status, "change_pending");
   assert.equal(workflow.caseUpdates.length, 0);
+  assert.deepEqual(workflow.reviewerDecisionCalls, [
+    {
+      p_case_id: workflow.caseRecord.id,
+      p_next_status: "change_pending",
+      p_reviewer_comment: "Still waiting on updated documents.",
+    },
+  ]);
   assert.equal(workflow.timelineEvents.length, 0);
   assert.equal(workflow.auditEntries.length, 0);
+});
+
+test("stale reviewer decisions fail cleanly without overwriting the current status", async () => {
+  const workflow = buildReviewerWorkflowContext("submitted", {
+    staleReviewerDecisionStatus: "approved",
+  });
+
+  await assert.rejects(
+    () =>
+      denyCase(workflow.context, {
+        caseId: workflow.caseRecord.id,
+        reviewerComment: "Late denial attempt after another reviewer approved the case.",
+      }),
+    /Only submitted cases can be reviewed\./,
+  );
+
+  assert.equal(workflow.caseRecord.status, "approved");
+  assert.deepEqual(workflow.reviewerDecisionCalls, [
+    {
+      p_case_id: workflow.caseRecord.id,
+      p_next_status: "denied",
+      p_reviewer_comment: "Late denial attempt after another reviewer approved the case.",
+    },
+  ]);
+  assert.equal(workflow.caseUpdates.length, 0);
+  assert.equal(workflow.timelineEvents.length, 0);
+  assert.equal(workflow.auditEntries.length, 0);
+});
+
+test("review approval can omit a comment while preserving canonical DB-owned history", async () => {
+  const workflow = buildReviewerWorkflowContext("submitted");
+
+  const result = await approveCase(workflow.context, {
+    caseId: workflow.caseRecord.id,
+    reviewerComment: null,
+  });
+
+  assert.equal(result.status, "approved");
+  assert.deepEqual(workflow.reviewerDecisionCalls, [
+    {
+      p_case_id: workflow.caseRecord.id,
+      p_next_status: "approved",
+      p_reviewer_comment: null,
+    },
+  ]);
+  assert.deepEqual(workflow.timelineEvents[0], {
+    case_id: workflow.caseRecord.id,
+    event_type: "status_changed",
+    title: "Case approved",
+    description: "School review approved this case.",
+  });
+  assert.deepEqual(workflow.auditEntries[0], {
+    case_id: workflow.caseRecord.id,
+    actor_id: workflow.reviewerUserId,
+    action_type: "review_approved",
+    field_name: "status",
+    old_value: "submitted",
+    new_value: "approved",
+    reason: "Reviewer approved the submitted case.",
+  });
 });

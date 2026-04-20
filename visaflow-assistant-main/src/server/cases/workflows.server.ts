@@ -7,12 +7,7 @@ import {
   canRerunDeterministicEvaluation,
 } from "../../lib/cases/status.ts";
 import { getDocumentTypeLabel } from "../../lib/constants.ts";
-import {
-  findOwnedCase,
-  findOwnedCaseNote,
-  loadOwnedCase,
-  loadReviewableCase,
-} from "./authz.server.ts";
+import { findOwnedCase, findOwnedCaseNote, loadOwnedCase } from "./authz.server.ts";
 import {
   writeCaseTimelineEventBestEffort,
   writeStatusChangeHistoryBestEffort,
@@ -43,6 +38,25 @@ import type {
 } from "./validation.ts";
 
 const FINALIZE_CASE_REQUIREMENT_EVALUATION_RPC = "finalize_case_requirement_evaluation";
+const REVIEWER_CASE_DECISION_RPC = "apply_reviewer_case_decision";
+type ReviewerDecisionStatus = Extract<CaseStatus, "approved" | "denied" | "change_pending">;
+
+interface ReviewerCaseDecisionRecord {
+  case_id: string;
+  previous_status: "submitted";
+  next_status: ReviewerDecisionStatus;
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+const isReviewerCaseDecisionRecord = (value: unknown): value is ReviewerCaseDecisionRecord =>
+  isRecord(value) &&
+  typeof value.case_id === "string" &&
+  value.previous_status === "submitted" &&
+  (value.next_status === "approved" ||
+    value.next_status === "denied" ||
+    value.next_status === "change_pending");
 
 const buildDraftMutation = (input: SaveCaseDraftInput): CaseUpdate => ({
   school_template_id: input.schoolTemplateId,
@@ -281,17 +295,37 @@ const assertCaseCanBeSubmittedForReview = ({
   }
 };
 
-const assertCaseCanReceiveReviewerDecision = (status: CaseStatus) => {
-  if (status !== "submitted") {
-    throw new Error("Only submitted cases can be reviewed.");
+const persistReviewerCaseDecision = async (
+  context: CaseWorkflowContext,
+  caseId: string,
+  nextStatus: ReviewerDecisionStatus,
+  reviewerComment: string | null,
+) => {
+  const { data, error } = await context.supabase
+    .rpc(REVIEWER_CASE_DECISION_RPC, {
+      p_case_id: caseId,
+      p_next_status: nextStatus,
+      p_reviewer_comment: reviewerComment,
+    })
+    .single();
+
+  if (error) {
+    throw normalizeCaseWorkflowDatabaseError(error, {
+      operationLabel: "Case review",
+      fallbackMessage: "Unable to update this case.",
+    });
   }
+
+  if (
+    !isReviewerCaseDecisionRecord(data) ||
+    data.case_id !== caseId ||
+    data.next_status !== nextStatus
+  ) {
+    throw new Error("Case review returned an unexpected response.");
+  }
+
+  return data;
 };
-
-const buildReviewerDecisionDescription = (description: string, reviewerComment: string | null) =>
-  reviewerComment ? `${description} Reviewer note: ${reviewerComment}` : description;
-
-const buildReviewerDecisionReason = (reason: string, reviewerComment: string | null) =>
-  reviewerComment ? `${reason} Comment: ${reviewerComment}` : reason;
 
 export const buildDocumentUploadTimelineEvent = ({
   caseId,
@@ -361,39 +395,19 @@ const transitionSubmittedCaseByReviewer = async (
   context: CaseWorkflowContext,
   input: { caseId: string; reviewerComment: string | null },
   config: {
-    nextStatus: Extract<CaseStatus, "approved" | "denied" | "change_pending">;
-    auditActionType: string;
-    timelineTitle: string;
-    description: string;
-    reason: string;
+    nextStatus: ReviewerDecisionStatus;
   },
 ) => {
-  const caseData = await loadReviewableCase(context, input.caseId);
-  const previousStatus = caseData.status;
-
-  assertCaseCanReceiveReviewerDecision(previousStatus);
-
-  const nextStatus = assertValidCaseStatusTransition(previousStatus, config.nextStatus);
-
-  await persistCaseStatus(context, input.caseId, nextStatus, {
-    ownerScoped: false,
-    operationLabel: "Case review",
-    fallbackMessage: "Unable to update this case.",
-  });
-
-  await writeStatusChangeHistoryBestEffort(context, {
-    caseId: input.caseId,
-    previousStatus,
-    nextStatus,
-    description: buildReviewerDecisionDescription(config.description, input.reviewerComment),
-    reason: buildReviewerDecisionReason(config.reason, input.reviewerComment),
-    auditActionType: config.auditActionType,
-    timelineTitle: config.timelineTitle,
-  });
+  const decision = await persistReviewerCaseDecision(
+    context,
+    input.caseId,
+    config.nextStatus,
+    input.reviewerComment,
+  );
 
   return {
     caseId: input.caseId,
-    status: nextStatus,
+    status: decision.next_status,
   };
 };
 
@@ -618,19 +632,11 @@ export const submitCaseForReview = async (
 export const approveCase = async (context: CaseWorkflowContext, input: ApproveCaseInput) =>
   transitionSubmittedCaseByReviewer(context, input, {
     nextStatus: "approved",
-    auditActionType: "review_approved",
-    timelineTitle: "Case approved",
-    description: "School review approved this case.",
-    reason: "Reviewer approved the submitted case.",
   });
 
 export const denyCase = async (context: CaseWorkflowContext, input: DenyCaseInput) =>
   transitionSubmittedCaseByReviewer(context, input, {
     nextStatus: "denied",
-    auditActionType: "review_denied",
-    timelineTitle: "Case denied",
-    description: "School review denied this case.",
-    reason: "Reviewer denied the submitted case.",
   });
 
 export const requestCaseChanges = async (
@@ -639,10 +645,6 @@ export const requestCaseChanges = async (
 ) =>
   transitionSubmittedCaseByReviewer(context, input, {
     nextStatus: "change_pending",
-    auditActionType: "review_changes_requested",
-    timelineTitle: "Changes requested",
-    description: "School review requested changes before approval.",
-    reason: "Reviewer requested changes on the submitted case.",
   });
 
 export const addCaseNote = async (context: CaseWorkflowContext, input: AddCaseNoteInput) => {

@@ -21,6 +21,22 @@ test("maps missing RPC errors to an actionable migration message", () => {
   assert.equal(normalized.message, formatCaseWorkflowSchemaDriftMessage("Document registration"));
 });
 
+test("maps missing reviewer decision RPC errors to an actionable migration message", () => {
+  const normalized = normalizeCaseWorkflowDatabaseError(
+    {
+      code: "PGRST202",
+      message:
+        "Could not find the function public.apply_reviewer_case_decision(p_case_id, p_next_status, p_reviewer_comment) in the schema cache",
+    },
+    {
+      operationLabel: "Case review",
+      fallbackMessage: "Unable to update this case.",
+    },
+  );
+
+  assert.equal(normalized.message, formatCaseWorkflowSchemaDriftMessage("Case review"));
+});
+
 test("treats missing upload_registration_id column errors as schema drift", () => {
   const error = {
     code: "42703",

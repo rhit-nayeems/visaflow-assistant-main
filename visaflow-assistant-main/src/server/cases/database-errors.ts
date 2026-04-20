@@ -2,6 +2,8 @@ const REQUIRED_CASE_WORKFLOW_MIGRATIONS = [
   "20260416103000_fix_case_finalize_atomicity_and_document_registration.sql",
   "20260419113000_register_case_document_rpc.sql",
   "20260420120000_persist_case_document_reevaluation_flag.sql",
+  "20260420150000_restrict_reviewer_case_writes_to_atomic_decision_rpc.sql",
+  "20260420153000_make_reviewer_case_decision_audit_safe.sql",
 ] as const;
 
 const CASE_WORKFLOW_SCHEMA_DRIFT_CODES = new Set(["PGRST202", "42883", "42703", "42P01", "42704"]);
@@ -57,8 +59,10 @@ export const isCaseWorkflowSchemaDriftError = (
       "could not find the function public.finalize_case_requirement_evaluation",
     ) ||
     databaseErrorText.includes("could not find the function public.register_case_document") ||
+    databaseErrorText.includes("could not find the function public.apply_reviewer_case_decision") ||
     databaseErrorText.includes("finalize_case_requirement_evaluation") ||
     databaseErrorText.includes("register_case_document") ||
+    databaseErrorText.includes("apply_reviewer_case_decision") ||
     databaseErrorText.includes('column "upload_registration_id" does not exist') ||
     databaseErrorText.includes("column upload_registration_id does not exist") ||
     databaseErrorText.includes('has no field "upload_registration_id"') ||
