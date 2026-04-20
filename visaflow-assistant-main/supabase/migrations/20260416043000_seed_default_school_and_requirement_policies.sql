@@ -1,4 +1,4 @@
-﻿CREATE POLICY "Users can insert requirements for own cases" ON public.case_requirements
+CREATE POLICY "Users can insert requirements for own cases" ON public.case_requirements
   FOR INSERT WITH CHECK (
     EXISTS (
       SELECT 1

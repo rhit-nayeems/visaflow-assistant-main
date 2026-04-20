@@ -1,4 +1,4 @@
-﻿CREATE OR REPLACE FUNCTION public.can_review_case(_user_id UUID, _case_id UUID)
+CREATE OR REPLACE FUNCTION public.can_review_case(_user_id UUID, _case_id UUID)
 RETURNS BOOLEAN
 LANGUAGE sql
 STABLE

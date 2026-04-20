@@ -1,4 +1,4 @@
-﻿WITH ranked_documents AS (
+WITH ranked_documents AS (
   SELECT
     id,
     ROW_NUMBER() OVER (

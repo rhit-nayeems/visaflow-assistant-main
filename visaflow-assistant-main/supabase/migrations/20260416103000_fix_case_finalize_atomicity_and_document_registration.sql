@@ -1,4 +1,4 @@
-﻿ALTER TABLE public.documents
+ALTER TABLE public.documents
 ADD COLUMN upload_registration_id TEXT;
 
 UPDATE public.documents
