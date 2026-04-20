@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FileText, Loader2 } from "lucide-react";
 import { AlertBanner } from "@/components/shared/AlertBanner";
+import { buildAuthCallbackUrl } from "@/lib/auth-redirect";
 
 export function SignupForm() {
   const navigate = useNavigate();
@@ -25,7 +26,7 @@ export function SignupForm() {
       password,
       options: {
         data: { full_name: fullName },
-        emailRedirectTo: window.location.origin + "/dashboard",
+        emailRedirectTo: buildAuthCallbackUrl(),
       },
     });
     setLoading(false);
@@ -41,7 +42,7 @@ export function SignupForm() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider,
       options: {
-        redirectTo: window.location.origin + "/dashboard",
+        redirectTo: buildAuthCallbackUrl(),
       },
     });
 

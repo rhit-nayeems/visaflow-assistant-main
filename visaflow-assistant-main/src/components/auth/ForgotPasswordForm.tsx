@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FileText, Loader2 } from "lucide-react";
 import { AlertBanner } from "@/components/shared/AlertBanner";
+import { AUTH_PATHS, buildAuthCallbackUrl } from "@/lib/auth-redirect";
 
 export function ForgotPasswordForm() {
   const [email, setEmail] = useState("");
@@ -18,7 +19,7 @@ export function ForgotPasswordForm() {
     setError("");
     setLoading(true);
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: window.location.origin + "/reset-password",
+      redirectTo: buildAuthCallbackUrl({ nextPath: AUTH_PATHS.recovery }),
     });
     setLoading(false);
     if (error) {
@@ -37,7 +38,9 @@ export function ForgotPasswordForm() {
             If an account exists for <strong>{email}</strong>, we sent a password reset link.
           </p>
           <Link to="/login">
-            <Button variant="outline" className="mt-6">Back to sign in</Button>
+            <Button variant="outline" className="mt-6">
+              Back to sign in
+            </Button>
           </Link>
         </div>
       </div>
@@ -59,7 +62,9 @@ export function ForgotPasswordForm() {
 
         <form onSubmit={handleSubmit} className="space-y-3">
           <div>
-            <Label htmlFor="email" className="text-xs">Email</Label>
+            <Label htmlFor="email" className="text-xs">
+              Email
+            </Label>
             <Input
               id="email"
               type="email"
@@ -77,7 +82,9 @@ export function ForgotPasswordForm() {
         </form>
 
         <p className="mt-4 text-center text-xs text-muted-foreground">
-          <Link to="/login" className="text-primary hover:underline">Back to sign in</Link>
+          <Link to="/login" className="text-primary hover:underline">
+            Back to sign in
+          </Link>
         </p>
       </div>
     </div>

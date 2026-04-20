@@ -14,21 +14,46 @@ export function ResetPasswordForm() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [ready, setReady] = useState(false);
+  const [checkingAccess, setCheckingAccess] = useState(true);
 
   useEffect(() => {
-    // Check if we have a recovery session
-    const hash = window.location.hash;
-    if (hash.includes("type=recovery")) {
-      setReady(true);
-    } else {
-      // Also listen for PASSWORD_RECOVERY event
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-        if (event === "PASSWORD_RECOVERY") {
+    let cancelled = false;
+
+    const checkRecoveryAccess = async () => {
+      const hash = window.location.hash;
+      if (hash.includes("type=recovery")) {
+        if (!cancelled) {
           setReady(true);
+          setCheckingAccess(false);
         }
-      });
-      return () => subscription.unsubscribe();
-    }
+        return;
+      }
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!cancelled) {
+        setReady(!!session);
+        setCheckingAccess(false);
+      }
+    };
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "PASSWORD_RECOVERY" || !!session) {
+        setReady(true);
+        setCheckingAccess(false);
+      }
+    });
+
+    void checkRecoveryAccess();
+
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -52,11 +77,28 @@ export function ResetPasswordForm() {
     }
   };
 
-  if (!ready) {
+  if (checkingAccess) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background px-4">
         <div className="text-center">
           <p className="text-sm text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!ready) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-4">
+        <div className="w-full max-w-sm space-y-4">
+          <AlertBanner
+            variant="error"
+            title="Password reset link is invalid"
+            description="Request a new password reset email and open the latest link."
+          />
+          <Button asChild className="w-full">
+            <Link to="/forgot-password">Request a new reset link</Link>
+          </Button>
         </div>
       </div>
     );
@@ -77,12 +119,32 @@ export function ResetPasswordForm() {
 
         <form onSubmit={handleSubmit} className="space-y-3">
           <div>
-            <Label htmlFor="password" className="text-xs">New password</Label>
-            <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} className="mt-1" />
+            <Label htmlFor="password" className="text-xs">
+              New password
+            </Label>
+            <Input
+              id="password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              minLength={6}
+              className="mt-1"
+            />
           </div>
           <div>
-            <Label htmlFor="confirm" className="text-xs">Confirm password</Label>
-            <Input id="confirm" type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required minLength={6} className="mt-1" />
+            <Label htmlFor="confirm" className="text-xs">
+              Confirm password
+            </Label>
+            <Input
+              id="confirm"
+              type="password"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              required
+              minLength={6}
+              className="mt-1"
+            />
           </div>
           <Button type="submit" className="w-full" disabled={loading}>
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

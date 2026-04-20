@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FileText, Loader2 } from "lucide-react";
 import { AlertBanner } from "@/components/shared/AlertBanner";
+import { buildAuthCallbackUrl } from "@/lib/auth-redirect";
 
 export function LoginForm() {
   const navigate = useNavigate();
@@ -32,7 +33,7 @@ export function LoginForm() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider,
       options: {
-        redirectTo: window.location.origin + "/dashboard",
+        redirectTo: buildAuthCallbackUrl(),
       },
     });
 
