@@ -86,6 +86,38 @@ test("treats PostgREST schema-cache misses for needs_document_reevaluation as sc
   assert.equal(normalized.message, formatCaseWorkflowSchemaDriftMessage("Case access"));
 });
 
+test("treats missing document extraction columns as schema drift", () => {
+  const error = {
+    code: "42703",
+    message: 'column "extraction_status" does not exist',
+  };
+
+  assert.equal(isCaseWorkflowSchemaDriftError(error), true);
+
+  const normalized = normalizeCaseWorkflowDatabaseError(error, {
+    operationLabel: "Document extraction",
+    fallbackMessage: "Unable to update this case document.",
+  });
+
+  assert.equal(normalized.message, formatCaseWorkflowSchemaDriftMessage("Document extraction"));
+});
+
+test("treats PostgREST schema-cache misses for document extraction columns as schema drift", () => {
+  const error = {
+    code: "PGRST204",
+    message: "Could not find the 'extraction_status' column of 'documents' in the schema cache",
+  };
+
+  assert.equal(isCaseWorkflowSchemaDriftError(error), true);
+
+  const normalized = normalizeCaseWorkflowDatabaseError(error, {
+    operationLabel: "Document extraction",
+    fallbackMessage: "Unable to update this case document.",
+  });
+
+  assert.equal(normalized.message, formatCaseWorkflowSchemaDriftMessage("Document extraction"));
+});
+
 test("does not treat unrelated PostgREST schema-cache misses as schema drift", () => {
   const error = {
     code: "PGRST204",

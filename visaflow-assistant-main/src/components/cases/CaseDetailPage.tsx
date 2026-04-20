@@ -17,8 +17,16 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 import { useAuth } from "@/lib/auth";
+import {
+  STALE_DOCUMENT_EXTRACTION_THRESHOLD_MINUTES,
+  canRetryDocumentExtraction,
+} from "@/lib/cases/document-extraction-state";
 import { canRerunDeterministicEvaluation } from "@/lib/cases/status";
-import { getCaseNextRecommendedAction, summarizeRequirementRows } from "@/lib/cases/requirements";
+import {
+  getCaseNextRecommendedAction,
+  getLatestDocumentsByType,
+  summarizeRequirementRows,
+} from "@/lib/cases/requirements";
 import {
   ACCEPTED_FILE_TYPES,
   DOCUMENT_TYPES,
@@ -32,6 +40,7 @@ import {
   addCaseNoteAction,
   registerUploadedCaseDocumentAction,
   reevaluateCaseAfterUploadsAction,
+  retryCaseDocumentExtractionAction,
   submitCaseForReviewAction,
 } from "@/server/cases/actions";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -67,6 +76,21 @@ const DOCUMENT_UPLOAD_ACCEPT = Object.values(ACCEPTED_FILE_TYPES).flat().join(",
 const MAX_DOCUMENT_FILE_SIZE_MB = Math.round(MAX_FILE_SIZE / (1024 * 1024));
 
 const formatCaseStatusLabel = (status: string) => status.replace(/_/g, " ");
+const formatExtractionStatusLabel = (status: Document["extraction_status"]) =>
+  status.replace(/_/g, " ");
+
+const getExtractionStatusBadgeClassName = (status: Document["extraction_status"]) => {
+  switch (status) {
+    case "succeeded":
+      return "bg-success/10 text-success";
+    case "failed":
+      return "bg-destructive/10 text-destructive";
+    case "processing":
+      return "bg-warning/10 text-warning";
+    default:
+      return "bg-muted text-muted-foreground";
+  }
+};
 
 export function CaseDetailPage({ caseId }: CaseDetailProps) {
   const { user, session } = useAuth();
@@ -94,10 +118,12 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
   const [submitLoading, setSubmitLoading] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [submitNotice, setSubmitNotice] = useState("");
+  const [retryExtractionDocumentId, setRetryExtractionDocumentId] = useState<string | null>(null);
 
   const addCaseNoteMutation = useServerFn(addCaseNoteAction);
   const registerUploadedCaseDocumentMutation = useServerFn(registerUploadedCaseDocumentAction);
   const reevaluateCaseAfterUploadsMutation = useServerFn(reevaluateCaseAfterUploadsAction);
+  const retryCaseDocumentExtractionMutation = useServerFn(retryCaseDocumentExtractionAction);
   const submitCaseForReviewMutation = useServerFn(submitCaseForReviewAction);
 
   const load = useCallback(async () => {
@@ -220,11 +246,19 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
       const documentLabel = getDocumentTypeLabel(registeredDocument.documentType);
       const uploadSummary = registeredDocument.createdNew
         ? registeredDocument.versionNumber > 1
-          ? `${documentLabel} saved as version ${registeredDocument.versionNumber}. Re-run evaluation to refresh requirements and case status.`
-          : `${documentLabel} uploaded. Re-run evaluation to refresh requirements and case status.`
+          ? `${documentLabel} saved as version ${registeredDocument.versionNumber}.`
+          : `${documentLabel} uploaded.`
         : `${documentLabel} upload confirmed. No duplicate version was created.`;
+      const extractionSummary =
+        registeredDocument.extractionStatus === "succeeded"
+          ? registeredDocument.reevaluationStatus
+            ? `Local extraction completed and deterministic evaluation refreshed the case.`
+            : `Local extraction completed.`
+          : registeredDocument.extractionStatus === "failed"
+            ? `Local extraction failed for this version. Retry extraction from the document list or re-run evaluation if the case should still be cleared without new extracted values.`
+            : `Document extraction is still pending.`;
 
-      setUploadNotice(uploadSummary);
+      setUploadNotice(`${uploadSummary} ${extractionSummary}`);
       resetUploadSelection();
       await load();
     } catch (error) {
@@ -266,6 +300,42 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
       );
     } finally {
       setReevaluateLoading(false);
+    }
+  };
+
+  const handleRetryExtraction = async (document: Document) => {
+    setRetryExtractionDocumentId(document.id);
+    setUploadError("");
+    setUploadNotice("");
+    setReevaluateError("");
+    setReevaluateNotice("");
+    setSubmitError("");
+    setSubmitNotice("");
+
+    try {
+      const result = await retryCaseDocumentExtractionMutation({
+        data: {
+          caseId,
+          documentId: document.id,
+        },
+        headers: getServerFnHeaders(),
+      });
+
+      const documentLabel = getDocumentTypeLabel(result.documentType);
+      setUploadNotice(
+        result.extractionStatus === "succeeded"
+          ? result.reevaluationStatus
+            ? `${documentLabel} extraction retried successfully. Deterministic evaluation refreshed the case.`
+            : `${documentLabel} extraction retried successfully.`
+          : `${documentLabel} extraction still failed. ${result.extractionError ?? "Retry the extraction again after updating the file."}`,
+      );
+      await load();
+    } catch (error) {
+      setUploadError(
+        error instanceof Error ? error.message : "Unable to retry document extraction.",
+      );
+    } finally {
+      setRetryExtractionDocumentId(null);
     }
   };
 
@@ -338,6 +408,30 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
   const isChangePending = caseData.status === "change_pending";
   const nextAction = getCaseNextRecommendedAction(caseData.status, requirementSummary);
   const canRerunEvaluation = canRerunDeterministicEvaluation(caseData.status);
+  const latestDocuments = getLatestDocumentsByType(documents);
+  const latestDocumentIds = new Set(latestDocuments.map((document) => document.id));
+  const latestRetryableExtractions = latestDocuments.filter((document) =>
+    canRetryDocumentExtraction(document),
+  );
+  const latestFailedExtractions = latestDocuments.filter(
+    (document) => document.extraction_status === "failed",
+  );
+  const latestRetryablePendingExtractions = latestDocuments.filter(
+    (document) => document.extraction_status === "pending",
+  );
+  const latestStaleProcessingExtractions = latestDocuments.filter(
+    (document) =>
+      document.extraction_status === "processing" && canRetryDocumentExtraction(document),
+  );
+  const latestActiveProcessingExtractions = latestDocuments.filter(
+    (document) =>
+      document.extraction_status === "processing" && !canRetryDocumentExtraction(document),
+  );
+  const hasBlockingLatestExtractions =
+    latestFailedExtractions.length > 0 ||
+    latestRetryablePendingExtractions.length > 0 ||
+    latestStaleProcessingExtractions.length > 0 ||
+    latestActiveProcessingExtractions.length > 0;
   const documentsForSelectedType = documents.filter(
     (document) => document.document_type === selectedDocumentType,
   );
@@ -352,9 +446,19 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
   const canResubmitForReview = caseData.status === "change_pending";
   const needsDocumentReevaluation = caseData.needs_document_reevaluation;
   const canSubmitForReview =
-    (isReadyForSubmission || canResubmitForReview) && !needsDocumentReevaluation;
+    (isReadyForSubmission || canResubmitForReview) &&
+    !needsDocumentReevaluation &&
+    !hasBlockingLatestExtractions;
   const submitButtonLabel = canResubmitForReview ? "Resubmit for review" : "Submit for review";
   const submitHelperText = (() => {
+    if (latestRetryableExtractions.length > 0) {
+      return "Retry unresolved document extraction before submitting this case.";
+    }
+
+    if (latestActiveProcessingExtractions.length > 0) {
+      return "Wait for current document extraction to finish before submitting this case.";
+    }
+
     if (needsDocumentReevaluation) {
       return "Re-run evaluation after recent document uploads before submitting this case.";
     }
@@ -409,7 +513,13 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
         <div className="flex max-w-xs flex-col items-end gap-2 text-right">
           <Button
             onClick={handleSubmitForReview}
-            disabled={uploadLoading || reevaluateLoading || submitLoading || !canSubmitForReview}
+            disabled={
+              uploadLoading ||
+              reevaluateLoading ||
+              submitLoading ||
+              retryExtractionDocumentId !== null ||
+              !canSubmitForReview
+            }
           >
             {submitLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             {submitButtonLabel}
@@ -418,7 +528,12 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
           <Button
             variant="outline"
             onClick={handleReevaluate}
-            disabled={reevaluateLoading || submitLoading || !canRerunEvaluation}
+            disabled={
+              reevaluateLoading ||
+              submitLoading ||
+              retryExtractionDocumentId !== null ||
+              !canRerunEvaluation
+            }
           >
             {reevaluateLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             Re-run evaluation
@@ -460,6 +575,48 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
         />
       )}
       {nextAction && <AlertBanner variant="info" title="Next step" description={nextAction} />}
+      {latestFailedExtractions.length > 0 && (
+        <AlertBanner
+          variant="error"
+          title="Document extraction retry required"
+          description={`Retry extraction for ${latestFailedExtractions
+            .map((document) => getDocumentTypeLabel(document.document_type))
+            .join(
+              ", ",
+            )}. This build uses a local text-pattern extractor, so unsupported or unreadable files stay blocked until you retry or explicitly clear the case with reevaluation.`}
+        />
+      )}
+      {latestRetryablePendingExtractions.length > 0 && (
+        <AlertBanner
+          variant="warning"
+          title="Document extraction pending retry"
+          description={`Retry extraction for ${latestRetryablePendingExtractions
+            .map((document) => getDocumentTypeLabel(document.document_type))
+            .join(
+              ", ",
+            )} from the document list if these legacy or interrupted rows do not clear automatically.`}
+        />
+      )}
+      {latestStaleProcessingExtractions.length > 0 && (
+        <AlertBanner
+          variant="warning"
+          title="Document extraction appears stalled"
+          description={`Retry extraction for ${latestStaleProcessingExtractions
+            .map((document) => getDocumentTypeLabel(document.document_type))
+            .join(
+              ", ",
+            )}. Processing rows become retryable after ${STALE_DOCUMENT_EXTRACTION_THRESHOLD_MINUTES} minutes if they stay stuck.`}
+        />
+      )}
+      {latestActiveProcessingExtractions.length > 0 && (
+        <AlertBanner
+          variant="warning"
+          title="Document extraction in progress"
+          description={`VisaFlow is still processing ${latestActiveProcessingExtractions
+            .map((document) => getDocumentTypeLabel(document.document_type))
+            .join(", ")}.`}
+        />
+      )}
       {needsDocumentReevaluation && (
         <AlertBanner
           variant="warning"
@@ -482,8 +639,18 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
       )}
       {uploadNotice && (
         <AlertBanner
-          variant={needsDocumentReevaluation ? "info" : "success"}
-          title="Document update recorded"
+          variant={
+            latestFailedExtractions.length > 0
+              ? "warning"
+              : needsDocumentReevaluation
+                ? "info"
+                : "success"
+          }
+          title={
+            latestFailedExtractions.length > 0
+              ? "Document extraction requires attention"
+              : "Document update recorded"
+          }
           description={uploadNotice}
           action={
             needsDocumentReevaluation && canRerunEvaluation ? (
@@ -662,13 +829,19 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
                   <CardTitle className="text-sm">Upload or re-upload documents</CardTitle>
                   <CardDescription>
                     Use a new upload to create the next document version. Retrying the same failed
-                    upload keeps the same registration ID and avoids duplicates.
+                    upload keeps the same registration ID and avoids duplicates. This build uses a
+                    local text-pattern extractor, not production OCR.
                   </CardDescription>
                 </div>
                 <Button
                   variant="outline"
                   onClick={handleReevaluate}
-                  disabled={reevaluateLoading || submitLoading || !canRerunEvaluation}
+                  disabled={
+                    reevaluateLoading ||
+                    submitLoading ||
+                    retryExtractionDocumentId !== null ||
+                    !canRerunEvaluation
+                  }
                 >
                   {reevaluateLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                   Re-run evaluation
@@ -800,18 +973,53 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
                         <p className="text-xs text-muted-foreground">
                           {getDocumentTypeLabel(document.document_type)} - v
                           {document.version_number} -{" "}
+                          {latestDocumentIds.has(document.id)
+                            ? "current version"
+                            : "superseded version"}{" "}
+                          -{" "}
                           {formatDistanceToNow(new Date(document.created_at), { addSuffix: true })}
                         </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Upload: {document.upload_status} - Extraction:{" "}
+                          {formatExtractionStatusLabel(document.extraction_status)}
+                        </p>
+                        {document.extraction_error && (
+                          <p className="mt-1 text-xs text-destructive">
+                            {document.extraction_error}
+                          </p>
+                        )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-xs font-medium text-success">
-                        {document.upload_status}
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-xs font-medium ${getExtractionStatusBadgeClassName(document.extraction_status)}`}
+                      >
+                        {formatExtractionStatusLabel(document.extraction_status)}
                       </span>
+                      {latestDocumentIds.has(document.id) &&
+                        canRetryDocumentExtraction(document) && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => void handleRetryExtraction(document)}
+                            disabled={
+                              retryExtractionDocumentId === document.id ||
+                              uploadLoading ||
+                              reevaluateLoading ||
+                              submitLoading
+                            }
+                          >
+                            {retryExtractionDocumentId === document.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : null}
+                            Retry extraction
+                          </Button>
+                        )}
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => prepareReupload(document.document_type)}
+                        disabled={retryExtractionDocumentId === document.id}
                       >
                         Re-upload
                       </Button>

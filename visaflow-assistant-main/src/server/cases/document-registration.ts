@@ -23,6 +23,10 @@ export interface RegisteredCaseDocumentRecord {
   created_at: string;
   created_new: boolean;
   document_type: string;
+  extraction_completed_at: string | null;
+  extraction_error: string | null;
+  extraction_started_at: string | null;
+  extraction_status: string;
   file_name: string;
   file_path: string;
   id: string;
@@ -64,6 +68,10 @@ const isRegisteredCaseDocumentRecord = (value: unknown): value is RegisteredCase
   typeof value.file_name === "string" &&
   typeof value.file_path === "string" &&
   typeof value.document_type === "string" &&
+  typeof value.extraction_status === "string" &&
+  (typeof value.extraction_error === "string" || value.extraction_error === null) &&
+  (typeof value.extraction_started_at === "string" || value.extraction_started_at === null) &&
+  (typeof value.extraction_completed_at === "string" || value.extraction_completed_at === null) &&
   typeof value.upload_registration_id === "string" &&
   typeof value.upload_status === "string" &&
   typeof value.created_at === "string" &&

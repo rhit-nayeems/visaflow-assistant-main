@@ -1,11 +1,12 @@
 ﻿import assert from "node:assert/strict";
 import test from "node:test";
+import { STALE_DOCUMENT_EXTRACTION_THRESHOLD_MINUTES } from "../../lib/cases/document-extraction-state.ts";
 import {
   approveCase,
   buildDocumentUploadTimelineEvent,
   denyCase,
-  reevaluateCaseAfterUploads,
   registerUploadedCaseDocument,
+  retryCaseDocumentExtraction,
   requestCaseChanges,
   runDeterministicCaseEvaluation,
   submitCaseForReview,
@@ -54,6 +55,10 @@ const buildDocumentRecord = (
   file_name: overrides.file_name ?? `${documentType}.pdf`,
   file_path: overrides.file_path ?? `user-123/case-123/upload-${versionNumber}/${documentType}.pdf`,
   document_type: overrides.document_type ?? documentType,
+  extraction_completed_at: overrides.extraction_completed_at ?? null,
+  extraction_error: overrides.extraction_error ?? null,
+  extraction_started_at: overrides.extraction_started_at ?? null,
+  extraction_status: overrides.extraction_status ?? "succeeded",
   version_number: overrides.version_number ?? versionNumber,
   upload_registration_id:
     overrides.upload_registration_id ?? `upload-${documentType}-${versionNumber}`,
@@ -179,7 +184,10 @@ const buildReviewerDecisionHistory = ({
 
 const buildWorkflowContextForSubmission = (
   status: CaseRecord["status"],
-  overrides: Partial<CaseRecord> = {},
+  options: {
+    caseOverrides?: Partial<CaseRecord>;
+    documents?: DocumentRecord[];
+  } = {},
 ): {
   context: CaseWorkflowContext;
   caseRecord: CaseRecord;
@@ -190,12 +198,17 @@ const buildWorkflowContextForSubmission = (
   const timelineEvents: TimelineEventInsert[] = [];
   const auditEntries: AuditLogInsert[] = [];
   const caseUpdates: Array<Partial<CaseRecord>> = [];
-  const caseRecord = buildCaseRecord(status, overrides);
+  const caseRecord = buildCaseRecord(status, options.caseOverrides);
+  const documents = [...(options.documents ?? [])];
 
   const supabase = {
     from(table: string) {
       if (table === "cases") {
         return createCasesTable();
+      }
+
+      if (table === "documents") {
+        return createDocumentsTable();
       }
 
       if (table === "case_timeline_events") {
@@ -261,6 +274,42 @@ const buildWorkflowContextForSubmission = (
 
         return {
           data: matchesOwner ? caseRecord : null,
+          error: null,
+        };
+      },
+    };
+  }
+
+  function createDocumentsTable() {
+    let filters: Record<string, string> = {};
+
+    return {
+      select() {
+        filters = {};
+        return this;
+      },
+      eq(column: string, value: string) {
+        filters[column] = value;
+        return this;
+      },
+      async order(column: string, options?: { ascending?: boolean }) {
+        const matchingDocuments = documents.filter((document) =>
+          Object.entries(filters).every(([filterColumn, filterValue]) => {
+            return String(document[filterColumn as keyof DocumentRecord]) === filterValue;
+          }),
+        );
+
+        const sortedDocuments = [...matchingDocuments].sort((left, right) => {
+          const leftValue = String(left[column as keyof DocumentRecord]);
+          const rightValue = String(right[column as keyof DocumentRecord]);
+
+          return options?.ascending === false
+            ? rightValue.localeCompare(leftValue)
+            : leftValue.localeCompare(rightValue);
+        });
+
+        return {
+          data: sortedDocuments,
           error: null,
         };
       },
@@ -420,14 +469,28 @@ const buildStatefulWorkflowHarness = (): {
   caseUpdates: Array<Partial<CaseRecord>>;
   timelineEvents: TimelineEventInsert[];
   createContext: () => CaseWorkflowContext;
+  setStoredDocument: (filePath: string, content: string | Uint8Array | Error) => void;
 } => {
   const { documents, extractedFields } = buildReadyCaseDocuments();
   const caseRecord = buildCaseRecord("ready_for_submission");
   const timelineEvents: TimelineEventInsert[] = [];
   const auditEntries: AuditLogInsert[] = [];
   const caseUpdates: Array<Partial<CaseRecord>> = [];
+  const storedDocuments = new Map<string, string | Uint8Array | Error>();
   let nextDocumentNumber = documents.length + 1;
   let nextDocumentCreatedAtSecond = 10;
+  let nextExtractedFieldNumber = extractedFields.length + 1;
+
+  for (const document of documents) {
+    storedDocuments.set(
+      document.file_path,
+      "Job Duties: Build product features and support product releases",
+    );
+  }
+
+  const setStoredDocument = (filePath: string, content: string | Uint8Array | Error) => {
+    storedDocuments.set(filePath, content);
+  };
 
   const createContext = (): CaseWorkflowContext => {
     const supabase = {
@@ -493,17 +556,15 @@ const buildStatefulWorkflowHarness = (): {
                   ) + 1;
               const documentId = `doc-${nextDocumentNumber}`;
               const createdAt = `2026-04-20T00:00:${nextDocumentCreatedAtSecond}.000Z`;
-              const nextDocument: DocumentRecord = {
-                id: documentId,
+              const nextDocument = buildDocumentRecord(documentType, nextVersionNumber, {
                 case_id: String(args.p_case_id),
+                created_at: createdAt,
+                extraction_status: "pending",
                 file_name: String(args.p_file_name),
                 file_path: String(args.p_file_path),
-                document_type: documentType,
-                version_number: nextVersionNumber,
-                upload_status: "uploaded",
+                id: documentId,
                 upload_registration_id: uploadRegistrationId,
-                created_at: createdAt,
-              };
+              });
 
               nextDocumentNumber += 1;
               nextDocumentCreatedAtSecond += 1;
@@ -528,6 +589,49 @@ const buildStatefulWorkflowHarness = (): {
         }
 
         throw new Error(`Unexpected RPC call: ${fn}`);
+      },
+      storage: {
+        from(bucket: string) {
+          if (bucket !== "case-documents") {
+            throw new Error(`Unexpected storage bucket: ${bucket}`);
+          }
+
+          return {
+            async download(filePath: string) {
+              if (!storedDocuments.has(filePath)) {
+                return {
+                  data: null,
+                  error: new Error(`No stored test document found for ${filePath}.`),
+                };
+              }
+
+              const storedDocument = storedDocuments.get(filePath)!;
+              if (storedDocument instanceof Error) {
+                return {
+                  data: null,
+                  error: storedDocument,
+                };
+              }
+
+              const bytes =
+                typeof storedDocument === "string"
+                  ? new TextEncoder().encode(storedDocument)
+                  : storedDocument;
+
+              return {
+                data: {
+                  async arrayBuffer() {
+                    return bytes.buffer.slice(
+                      bytes.byteOffset,
+                      bytes.byteOffset + bytes.byteLength,
+                    );
+                  },
+                },
+                error: null,
+              };
+            },
+          };
+        },
       },
     } as unknown as CaseWorkflowContext["supabase"];
 
@@ -585,24 +689,62 @@ const buildStatefulWorkflowHarness = (): {
   }
 
   function createDocumentsTable() {
+    let mode: "select" | "update" | null = null;
     let filters: Record<string, string> = {};
+    let mutation: Partial<DocumentRecord> | null = null;
+
+    const findMatchingDocuments = () =>
+      documents.filter((document) =>
+        Object.entries(filters).every(([filterColumn, filterValue]) => {
+          return String(document[filterColumn as keyof DocumentRecord]) === filterValue;
+        }),
+      );
 
     return {
       select() {
+        mode = "select";
         filters = {};
+        mutation = null;
+        return this;
+      },
+      update(values: Partial<DocumentRecord>) {
+        mode = "update";
+        filters = {};
+        mutation = values;
         return this;
       },
       eq(column: string, value: string) {
         filters[column] = value;
+
+        if (mode === "update" && filters.id && filters.case_id) {
+          const matchingDocuments = findMatchingDocuments();
+
+          if (matchingDocuments.length > 0 && mutation) {
+            for (const document of matchingDocuments) {
+              Object.assign(document, mutation);
+            }
+          }
+
+          return Promise.resolve({
+            error:
+              matchingDocuments.length > 0
+                ? null
+                : new Error("Document not found or you do not have access."),
+          });
+        }
+
         return this;
       },
+      async maybeSingle() {
+        const [matchingDocument] = findMatchingDocuments();
+
+        return {
+          data: matchingDocument ?? null,
+          error: null,
+        };
+      },
       async order(column: string, options?: { ascending?: boolean }) {
-        const filteredDocuments = documents.filter((document) =>
-          Object.entries(filters).every(([filterColumn, filterValue]) => {
-            return String(document[filterColumn as keyof DocumentRecord]) === filterValue;
-          }),
-        );
-        const sortedDocuments = [...filteredDocuments].sort((left, right) => {
+        const sortedDocuments = [...findMatchingDocuments()].sort((left, right) => {
           const leftValue = String(left[column as keyof DocumentRecord]);
           const rightValue = String(right[column as keyof DocumentRecord]);
 
@@ -620,8 +762,33 @@ const buildStatefulWorkflowHarness = (): {
   }
 
   function createExtractedFieldsTable() {
+    let mode: "select" | "delete" | null = null;
+    let filters: Record<string, string> = {};
+
     return {
       select() {
+        mode = "select";
+        filters = {};
+        return this;
+      },
+      delete() {
+        mode = "delete";
+        filters = {};
+        return this;
+      },
+      eq(column: string, value: string) {
+        filters[column] = value;
+
+        if (mode === "delete" && filters.document_id) {
+          for (let index = extractedFields.length - 1; index >= 0; index -= 1) {
+            if (extractedFields[index]?.document_id === filters.document_id) {
+              extractedFields.splice(index, 1);
+            }
+          }
+
+          return Promise.resolve({ error: null });
+        }
+
         return this;
       },
       async in(column: string, values: string[]) {
@@ -634,6 +801,30 @@ const buildStatefulWorkflowHarness = (): {
           error: null,
         };
       },
+      async insert(
+        values: Array<{
+          confidence_score?: number | null;
+          document_id: string;
+          field_name: string;
+          field_value?: string | null;
+          manually_corrected?: boolean;
+        }>,
+      ) {
+        for (const value of values) {
+          extractedFields.push({
+            confidence_score: value.confidence_score ?? null,
+            created_at: "2026-04-20T00:05:00.000Z",
+            document_id: value.document_id,
+            field_name: value.field_name,
+            field_value: value.field_value ?? null,
+            id: `extracted-${nextExtractedFieldNumber}`,
+            manually_corrected: value.manually_corrected ?? false,
+          });
+          nextExtractedFieldNumber += 1;
+        }
+
+        return { error: null };
+      },
     };
   }
 
@@ -645,6 +836,7 @@ const buildStatefulWorkflowHarness = (): {
     caseUpdates,
     timelineEvents,
     createContext,
+    setStoredDocument,
   };
 };
 
@@ -698,6 +890,34 @@ test("deterministic evaluation can move a change-pending case back to ready afte
   });
 
   assert.equal(result.nextStatus, "ready_for_submission");
+});
+
+test("deterministic evaluation ignores stale extracted fields from superseded document versions", () => {
+  const latestOfferLetter = buildDocumentRecord("offer_letter", 2, { id: "offer-2" });
+  const documents = [
+    buildDocumentRecord("offer_letter", 1, { id: "offer-1" }),
+    latestOfferLetter,
+    buildDocumentRecord("advisor_approval", 1, { id: "advisor-1" }),
+    buildDocumentRecord("course_registration", 1, { id: "course-1" }),
+  ];
+  const extractedFields = [
+    buildExtractedFieldRecord("offer-1", "job_duties", "Old duties from the superseded version"),
+  ];
+
+  const result = runDeterministicCaseEvaluation({
+    caseData: buildCaseRecord("ready_for_submission"),
+    documents,
+    extractedFields,
+    templateConfig: null,
+  });
+
+  assert.equal(result.nextStatus, "blocked");
+  assert.equal(
+    result.evaluatedRequirements.find(
+      (requirement) => requirement.requirement_key === "job_duties_available",
+    )?.status,
+    "not_met",
+  );
 });
 
 test("deterministic evaluation rejects transitions from post-submission statuses", () => {
@@ -783,38 +1003,63 @@ test("submission rejects cases that are not eligible for review handoff", async 
   }
 });
 
-test("document re-upload keeps submit blocked across a reload-equivalent server round-trip until reevaluation succeeds", async () => {
+test("submission rejects unresolved latest document extraction even when the reevaluation flag is false", async () => {
+  const workflow = buildWorkflowContextForSubmission("ready_for_submission", {
+    documents: [
+      buildDocumentRecord("offer_letter", 1, {
+        extraction_status: "pending",
+      }),
+    ],
+  });
+
+  await assert.rejects(
+    () =>
+      submitCaseForReview(workflow.context, {
+        caseId: workflow.caseRecord.id,
+      }),
+    /Wait for document extraction to finish, or retry any failed or stale extraction, before submitting this case for review\./,
+  );
+
+  assert.equal(workflow.caseRecord.status, "ready_for_submission");
+  assert.equal(workflow.caseUpdates.length, 0);
+  assert.equal(workflow.timelineEvents.length, 0);
+  assert.equal(workflow.auditEntries.length, 0);
+});
+
+test("document upload automatically extracts and re-evaluates the case on success", async () => {
   const workflow = buildStatefulWorkflowHarness();
+  const filePath = `${workflow.caseRecord.user_id}/${workflow.caseRecord.id}/upload-offer-letter-2/offer-letter-v2.pdf`;
+
+  workflow.setStoredDocument(filePath, "Job Duties: Build product features and support releases");
+
   const uploadResult = await registerUploadedCaseDocument(workflow.createContext(), {
     caseId: workflow.caseRecord.id,
     documentType: "offer_letter",
     fileName: "offer-letter-v2.pdf",
-    filePath: `${workflow.caseRecord.user_id}/${workflow.caseRecord.id}/upload-offer-letter-2/offer-letter-v2.pdf`,
+    filePath,
     uploadRegistrationId: "upload-offer-letter-2",
   });
 
   assert.equal(uploadResult.createdNew, true);
   assert.equal(uploadResult.versionNumber, 2);
-  assert.equal(workflow.caseRecord.needs_document_reevaluation, true);
-  assert.equal(workflow.caseRecord.status, "ready_for_submission");
-
-  await assert.rejects(
-    () =>
-      submitCaseForReview(workflow.createContext(), {
-        caseId: workflow.caseRecord.id,
-      }),
-    /Re-run evaluation after recent document uploads before submitting this case for review\./,
-  );
-
-  assert.equal(workflow.caseRecord.status, "ready_for_submission");
-  assert.equal(workflow.caseRecord.needs_document_reevaluation, true);
-
-  const reevaluationResult = await reevaluateCaseAfterUploads(workflow.createContext(), {
-    caseId: workflow.caseRecord.id,
-  });
-
-  assert.equal(reevaluationResult.status, "ready_for_submission");
+  assert.equal(uploadResult.extractionStatus, "succeeded");
+  assert.equal(uploadResult.reevaluationStatus, "ready_for_submission");
   assert.equal(workflow.caseRecord.needs_document_reevaluation, false);
+  assert.equal(workflow.caseRecord.status, "ready_for_submission");
+  assert.equal(
+    workflow.documents.find((document) => document.id === uploadResult.documentId)
+      ?.extraction_status,
+    "succeeded",
+  );
+  assert.equal(
+    workflow.extractedFields.some(
+      (field) =>
+        field.document_id === uploadResult.documentId &&
+        field.field_name === "job_duties" &&
+        field.field_value === "Build product features and support releases",
+    ),
+    true,
+  );
 
   const submissionResult = await submitCaseForReview(workflow.createContext(), {
     caseId: workflow.caseRecord.id,
@@ -824,30 +1069,137 @@ test("document re-upload keeps submit blocked across a reload-equivalent server 
   assert.equal(workflow.caseRecord.status, "submitted");
 });
 
-test("retrying the same upload registration does not create a duplicate document or re-toggle submission eligibility", async () => {
+test("failed extraction keeps submission blocked until retry succeeds", async () => {
   const workflow = buildStatefulWorkflowHarness();
+  const filePath = `${workflow.caseRecord.user_id}/${workflow.caseRecord.id}/upload-offer-letter-2/offer-letter-v2.pdf`;
+
+  workflow.setStoredDocument(filePath, new Uint8Array([0, 159, 255, 0, 12, 4, 0, 255]));
+
   const firstAttempt = await registerUploadedCaseDocument(workflow.createContext(), {
     caseId: workflow.caseRecord.id,
     documentType: "offer_letter",
     fileName: "offer-letter-v2.pdf",
-    filePath: `${workflow.caseRecord.user_id}/${workflow.caseRecord.id}/upload-offer-letter-2/offer-letter-v2.pdf`,
+    filePath,
+    uploadRegistrationId: "upload-offer-letter-2",
+  });
+
+  assert.equal(firstAttempt.createdNew, true);
+  assert.equal(workflow.caseRecord.needs_document_reevaluation, true);
+  assert.equal(firstAttempt.extractionStatus, "failed");
+  assert.match(firstAttempt.extractionError ?? "", /production OCR/i);
+
+  await assert.rejects(
+    () =>
+      submitCaseForReview(workflow.createContext(), {
+        caseId: workflow.caseRecord.id,
+      }),
+    /Re-run evaluation after recent document uploads before submitting this case for review\./,
+  );
+
+  workflow.setStoredDocument(filePath, "Job Duties: Build product features and support releases");
+
+  const retryResult = await retryCaseDocumentExtraction(workflow.createContext(), {
+    caseId: workflow.caseRecord.id,
+    documentId: firstAttempt.documentId,
+  });
+
+  assert.equal(retryResult.extractionStatus, "succeeded");
+  assert.equal(retryResult.reevaluationStatus, "ready_for_submission");
+  assert.equal(workflow.caseRecord.needs_document_reevaluation, false);
+  assert.equal(
+    workflow.documents.find((document) => document.id === firstAttempt.documentId)
+      ?.extraction_status,
+    "succeeded",
+  );
+});
+
+test("retry rejects fresh processing extraction before it becomes stale", async () => {
+  const workflow = buildStatefulWorkflowHarness();
+  const processingDocument = workflow.documents[0]!;
+
+  processingDocument.extraction_status = "processing";
+  processingDocument.extraction_started_at = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+  workflow.caseRecord.needs_document_reevaluation = true;
+
+  await assert.rejects(
+    () =>
+      retryCaseDocumentExtraction(workflow.createContext(), {
+        caseId: workflow.caseRecord.id,
+        documentId: processingDocument.id,
+      }),
+    new RegExp(
+      `Retry becomes available after ${STALE_DOCUMENT_EXTRACTION_THRESHOLD_MINUTES} minutes if processing stays stuck\\.`,
+    ),
+  );
+
+  assert.equal(processingDocument.extraction_status, "processing");
+  assert.equal(workflow.documents.length, 3);
+});
+
+test("stale processing extraction can be retried without creating a duplicate document row", async () => {
+  const workflow = buildStatefulWorkflowHarness();
+  const processingDocument = workflow.documents[0]!;
+
+  workflow.caseRecord.needs_document_reevaluation = true;
+  processingDocument.extraction_status = "processing";
+  processingDocument.extraction_started_at = new Date(
+    Date.now() - (STALE_DOCUMENT_EXTRACTION_THRESHOLD_MINUTES + 1) * 60 * 1000,
+  ).toISOString();
+  workflow.setStoredDocument(
+    processingDocument.file_path,
+    "Job Duties: Build product features and support releases",
+  );
+
+  const retryResult = await retryCaseDocumentExtraction(workflow.createContext(), {
+    caseId: workflow.caseRecord.id,
+    documentId: processingDocument.id,
+  });
+
+  assert.equal(retryResult.documentId, processingDocument.id);
+  assert.equal(retryResult.extractionStatus, "succeeded");
+  assert.equal(retryResult.reevaluationStatus, "ready_for_submission");
+  assert.equal(workflow.caseRecord.needs_document_reevaluation, false);
+  assert.equal(workflow.documents.length, 3);
+  assert.equal(
+    workflow.documents.find((document) => document.id === processingDocument.id)?.extraction_status,
+    "succeeded",
+  );
+});
+
+test("retrying the same upload registration does not create a duplicate document or rerun extraction", async () => {
+  const workflow = buildStatefulWorkflowHarness();
+  const filePath = `${workflow.caseRecord.user_id}/${workflow.caseRecord.id}/upload-offer-letter-2/offer-letter-v2.pdf`;
+
+  workflow.setStoredDocument(filePath, "Job Duties: Build product features and support releases");
+
+  const firstAttempt = await registerUploadedCaseDocument(workflow.createContext(), {
+    caseId: workflow.caseRecord.id,
+    documentType: "offer_letter",
+    fileName: "offer-letter-v2.pdf",
+    filePath,
     uploadRegistrationId: "upload-offer-letter-2",
   });
   const secondAttempt = await registerUploadedCaseDocument(workflow.createContext(), {
     caseId: workflow.caseRecord.id,
     documentType: "offer_letter",
     fileName: "offer-letter-v2.pdf",
-    filePath: `${workflow.caseRecord.user_id}/${workflow.caseRecord.id}/upload-offer-letter-2/offer-letter-v2.pdf`,
+    filePath,
     uploadRegistrationId: "upload-offer-letter-2",
   });
 
   assert.equal(firstAttempt.createdNew, true);
   assert.equal(secondAttempt.createdNew, false);
+  assert.equal(secondAttempt.extractionStatus, "succeeded");
   assert.equal(
     workflow.documents.filter((document) => document.document_type === "offer_letter").length,
     2,
   );
-  assert.equal(workflow.caseRecord.needs_document_reevaluation, true);
+  assert.equal(
+    workflow.extractedFields.filter((field) => field.document_id === firstAttempt.documentId)
+      .length,
+    1,
+  );
+  assert.equal(workflow.caseRecord.needs_document_reevaluation, false);
 });
 
 test("review approval moves a submitted case to approved and records reviewer history", async () => {

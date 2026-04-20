@@ -29,6 +29,11 @@ export interface ReevaluateCaseAfterUploadsInput {
   caseId: string;
 }
 
+export interface RetryCaseDocumentExtractionInput {
+  caseId: string;
+  documentId: string;
+}
+
 export interface SubmitCaseForReviewInput {
   caseId: string;
 }
@@ -182,6 +187,19 @@ export const validateReevaluateCaseAfterUploadsInput = (
 
   return {
     caseId: parseRequiredString(input, "caseId", "Case"),
+  };
+};
+
+export const validateRetryCaseDocumentExtractionInput = (
+  input: unknown,
+): RetryCaseDocumentExtractionInput => {
+  if (!isRecord(input)) {
+    throw new Error("Document extraction retry input is required.");
+  }
+
+  return {
+    caseId: parseRequiredString(input, "caseId", "Case"),
+    documentId: parseRequiredString(input, "documentId", "Document"),
   };
 };
 

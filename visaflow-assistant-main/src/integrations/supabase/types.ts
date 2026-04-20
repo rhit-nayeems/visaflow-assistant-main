@@ -239,6 +239,10 @@ export type Database = {
           case_id: string;
           created_at: string;
           document_type: string;
+          extraction_completed_at: string | null;
+          extraction_error: string | null;
+          extraction_started_at: string | null;
+          extraction_status: string;
           file_name: string;
           file_path: string;
           id: string;
@@ -250,6 +254,10 @@ export type Database = {
           case_id: string;
           created_at?: string;
           document_type?: string;
+          extraction_completed_at?: string | null;
+          extraction_error?: string | null;
+          extraction_started_at?: string | null;
+          extraction_status?: string;
           file_name: string;
           file_path: string;
           id?: string;
@@ -261,6 +269,10 @@ export type Database = {
           case_id?: string;
           created_at?: string;
           document_type?: string;
+          extraction_completed_at?: string | null;
+          extraction_error?: string | null;
+          extraction_started_at?: string | null;
+          extraction_status?: string;
           file_name?: string;
           file_path?: string;
           id?: string;
@@ -520,6 +532,10 @@ export type Database = {
           created_at: string;
           created_new: boolean;
           document_type: string;
+          extraction_completed_at: string | null;
+          extraction_error: string | null;
+          extraction_started_at: string | null;
+          extraction_status: string;
           file_name: string;
           file_path: string;
           id: string;

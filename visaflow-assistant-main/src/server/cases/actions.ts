@@ -7,6 +7,7 @@ import {
   validateFinalizeCaseCreationAndEvaluateInput,
   validateReevaluateCaseAfterUploadsInput,
   validateRegisterUploadedCaseDocumentInput,
+  validateRetryCaseDocumentExtractionInput,
   validateRequestCaseChangesInput,
   validateSaveCaseDraftInput,
   validateSubmitCaseForReviewInput,
@@ -64,6 +65,21 @@ export const reevaluateCaseAfterUploadsAction = createServerFn({ method: "POST" 
     const { reevaluateCaseAfterUploads } = await import("./workflows.server");
 
     return reevaluateCaseAfterUploads(
+      {
+        supabase: context.supabase,
+        userId: context.userId,
+      },
+      data,
+    );
+  });
+
+export const retryCaseDocumentExtractionAction = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(validateRetryCaseDocumentExtractionInput)
+  .handler(async ({ context, data }) => {
+    const { retryCaseDocumentExtraction } = await import("./workflows.server");
+
+    return retryCaseDocumentExtraction(
       {
         supabase: context.supabase,
         userId: context.userId,

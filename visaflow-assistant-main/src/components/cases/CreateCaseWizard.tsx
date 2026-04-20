@@ -58,6 +58,8 @@ export function CreateCaseWizard() {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadRegistrationId, setUploadRegistrationId] = useState<string | null>(null);
   const [uploadInputKey, setUploadInputKey] = useState(0);
+  const [uploadNotice, setUploadNotice] = useState("");
+  const [uploadWarning, setUploadWarning] = useState("");
 
   const saveCaseDraftMutation = useServerFn(saveCaseDraftAction);
   const registerUploadedCaseDocumentMutation = useServerFn(registerUploadedCaseDocumentAction);
@@ -150,6 +152,8 @@ export function CreateCaseWizard() {
 
     setLoading(true);
     setError("");
+    setUploadNotice("");
+    setUploadWarning("");
 
     const nextUploadRegistrationId = uploadRegistrationId ?? crypto.randomUUID();
     const filePath = `${user.id}/${caseId}/${nextUploadRegistrationId}/${uploadFile.name}`;
@@ -167,7 +171,7 @@ export function CreateCaseWizard() {
     }
 
     try {
-      await registerUploadedCaseDocumentMutation({
+      const result = await registerUploadedCaseDocumentMutation({
         data: {
           caseId,
           fileName: uploadFile.name,
@@ -177,6 +181,19 @@ export function CreateCaseWizard() {
         },
         headers: getServerFnHeaders(),
       });
+
+      setUploadNotice(
+        result.extractionStatus === "succeeded"
+          ? result.reevaluationStatus
+            ? "Offer letter uploaded, extracted, and re-evaluated successfully."
+            : "Offer letter uploaded and extracted successfully."
+          : "",
+      );
+      setUploadWarning(
+        result.extractionStatus === "failed"
+          ? `Offer letter uploaded, but local extraction failed. ${result.extractionError ?? "Retry extraction from the case detail page after creation."}`
+          : "",
+      );
 
       setUploadFile(null);
       setUploadRegistrationId(null);
@@ -208,7 +225,9 @@ export function CreateCaseWizard() {
 
       navigate({ to: "/cases/$caseId", params: { caseId: result.caseId } });
     } catch (confirmError) {
-      setError(confirmError instanceof Error ? confirmError.message : "Unable to finalize this case.");
+      setError(
+        confirmError instanceof Error ? confirmError.message : "Unable to finalize this case.",
+      );
     } finally {
       setLoading(false);
     }
@@ -348,9 +367,26 @@ export function CreateCaseWizard() {
         <Card className="shadow-card">
           <CardHeader>
             <CardTitle className="text-base">Upload documents</CardTitle>
-            <CardDescription>Upload your offer letter and any supporting documents</CardDescription>
+            <CardDescription>
+              Upload your offer letter and any supporting documents. This build uses a local
+              text-pattern extractor, not production OCR.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {uploadWarning && (
+              <AlertBanner
+                variant="warning"
+                title="Document extraction needs attention"
+                description={uploadWarning}
+              />
+            )}
+            {uploadNotice && (
+              <AlertBanner
+                variant="success"
+                title="Document upload completed"
+                description={uploadNotice}
+              />
+            )}
             <div className="rounded-lg border-2 border-dashed p-6 text-center">
               <Upload className="mx-auto h-8 w-8 text-muted-foreground" />
               <p className="mt-2 text-sm text-muted-foreground">
@@ -366,6 +402,8 @@ export function CreateCaseWizard() {
                 onChange={(e) => {
                   const nextFile = e.target.files?.[0] || null;
 
+                  setUploadNotice("");
+                  setUploadWarning("");
                   setUploadFile(nextFile);
                   setUploadRegistrationId(nextFile ? crypto.randomUUID() : null);
                 }}
@@ -464,5 +502,3 @@ export function CreateCaseWizard() {
     </div>
   );
 }
-
-

@@ -246,6 +246,34 @@ export const normalizeCaseTemplateConfig = (rawConfig: unknown): CaseTemplateCon
 const getDocumentLabel = (documentType: string) =>
   DOCUMENT_LABELS[documentType] ?? documentType.replace(/_/g, " ");
 
+const compareDocumentVersions = (left: DocumentRecord, right: DocumentRecord) => {
+  if (left.version_number !== right.version_number) {
+    return left.version_number - right.version_number;
+  }
+
+  const createdAtComparison =
+    new Date(left.created_at).getTime() - new Date(right.created_at).getTime();
+  if (createdAtComparison !== 0) {
+    return createdAtComparison;
+  }
+
+  return left.id.localeCompare(right.id);
+};
+
+export const getLatestDocumentsByType = (documents: DocumentRecord[]): DocumentRecord[] => {
+  const latestDocuments = new Map<string, DocumentRecord>();
+
+  for (const document of documents) {
+    const existingDocument = latestDocuments.get(document.document_type);
+
+    if (!existingDocument || compareDocumentVersions(existingDocument, document) < 0) {
+      latestDocuments.set(document.document_type, document);
+    }
+  }
+
+  return Array.from(latestDocuments.values());
+};
+
 const evaluateDocumentRequirement = (
   caseId: string,
   requirement: TemplateRequirementConfig,
@@ -299,7 +327,7 @@ const evaluateExtractedFieldRequirement = (
 ): RequirementInsert => {
   const documentType = requirement.documentType ?? "offer_letter";
   const documentLabel = getDocumentLabel(documentType);
-  const matchingDocumentIds = documents
+  const matchingDocumentIds = getLatestDocumentsByType(documents)
     .filter((document) => document.document_type === documentType)
     .map((document) => document.id);
 

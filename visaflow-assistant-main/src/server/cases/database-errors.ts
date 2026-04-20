@@ -4,6 +4,7 @@ const REQUIRED_CASE_WORKFLOW_MIGRATIONS = [
   "20260420120000_persist_case_document_reevaluation_flag.sql",
   "20260420150000_restrict_reviewer_case_writes_to_atomic_decision_rpc.sql",
   "20260420153000_make_reviewer_case_decision_audit_safe.sql",
+  "20260420170000_add_case_document_extraction_lifecycle.sql",
 ] as const;
 
 const CASE_WORKFLOW_SCHEMA_DRIFT_CODES = new Set(["PGRST202", "42883", "42703", "42P01", "42704"]);
@@ -69,9 +70,25 @@ export const isCaseWorkflowSchemaDriftError = (
     databaseErrorText.includes('column "needs_document_reevaluation" does not exist') ||
     databaseErrorText.includes("column needs_document_reevaluation does not exist") ||
     databaseErrorText.includes('has no field "needs_document_reevaluation"') ||
+    databaseErrorText.includes('column "extraction_status" does not exist') ||
+    databaseErrorText.includes("column extraction_status does not exist") ||
+    databaseErrorText.includes('has no field "extraction_status"') ||
+    databaseErrorText.includes('column "extraction_error" does not exist') ||
+    databaseErrorText.includes("column extraction_error does not exist") ||
+    databaseErrorText.includes('has no field "extraction_error"') ||
+    databaseErrorText.includes('column "extraction_started_at" does not exist') ||
+    databaseErrorText.includes("column extraction_started_at does not exist") ||
+    databaseErrorText.includes('has no field "extraction_started_at"') ||
+    databaseErrorText.includes('column "extraction_completed_at" does not exist') ||
+    databaseErrorText.includes("column extraction_completed_at does not exist") ||
+    databaseErrorText.includes('has no field "extraction_completed_at"') ||
     isPostgrestMissingColumnSchemaCacheError(error, {
       table: "cases",
       column: "needs_document_reevaluation",
+    }) ||
+    isPostgrestMissingColumnSchemaCacheError(error, {
+      table: "documents",
+      column: "extraction_status",
     })
   );
 };

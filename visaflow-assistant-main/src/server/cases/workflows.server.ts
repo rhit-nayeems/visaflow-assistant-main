@@ -1,12 +1,19 @@
 ﻿import {
   deriveCaseStatusFromRequirements,
   evaluateCaseRequirements,
+  getLatestDocumentsByType,
 } from "../../lib/cases/requirements.ts";
+import {
+  STALE_DOCUMENT_EXTRACTION_THRESHOLD_MINUTES,
+  canRetryDocumentExtraction,
+  hasUnresolvedDocumentExtraction,
+} from "../../lib/cases/document-extraction-state.ts";
 import {
   assertValidCaseStatusTransition,
   canRerunDeterministicEvaluation,
 } from "../../lib/cases/status.ts";
 import { getDocumentTypeLabel } from "../../lib/constants.ts";
+import { extractDocumentWithLocalStub } from "./document-extraction.ts";
 import { findOwnedCase, findOwnedCaseNote, loadOwnedCase } from "./authz.server.ts";
 import {
   writeCaseTimelineEventBestEffort,
@@ -19,8 +26,10 @@ import type {
   CaseRecord,
   CaseStatus,
   CaseUpdate,
+  DocumentExtractionStatus,
   CaseWorkflowContext,
   DocumentRecord,
+  DocumentUpdate,
   ExtractedFieldRecord,
   RequirementInsert,
   TimelineEventInsert,
@@ -32,6 +41,7 @@ import type {
   FinalizeCaseCreationAndEvaluateInput,
   RegisterUploadedCaseDocumentInput,
   ReevaluateCaseAfterUploadsInput,
+  RetryCaseDocumentExtractionInput,
   RequestCaseChangesInput,
   SaveCaseDraftInput,
   SubmitCaseForReviewInput,
@@ -45,6 +55,14 @@ interface ReviewerCaseDecisionRecord {
   case_id: string;
   previous_status: "submitted";
   next_status: ReviewerDecisionStatus;
+}
+
+interface DocumentExtractionLifecycleResult {
+  extractedFieldCount: number;
+  extractionError: string | null;
+  extractionStatus: DocumentExtractionStatus;
+  reevaluationRequirementCount: number | null;
+  reevaluationStatus: CaseStatus | null;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -208,6 +226,152 @@ const loadExtractedFields = async (
   return data ?? [];
 };
 
+const loadOwnedCaseDocument = async (
+  context: CaseWorkflowContext,
+  caseId: string,
+  documentId: string,
+): Promise<DocumentRecord> => {
+  const { data, error } = await context.supabase
+    .from("documents")
+    .select("*")
+    .eq("id", documentId)
+    .eq("case_id", caseId)
+    .maybeSingle();
+
+  if (error) {
+    throw normalizeCaseWorkflowDatabaseError(error, {
+      operationLabel: "Document access",
+      fallbackMessage: "Unable to load this case document.",
+    });
+  }
+
+  if (!data) {
+    throw new Error("Document not found or you do not have access.");
+  }
+
+  return data as DocumentRecord;
+};
+
+const updateDocumentRecord = async (
+  context: CaseWorkflowContext,
+  caseId: string,
+  documentId: string,
+  values: DocumentUpdate,
+) => {
+  const { error } = await context.supabase
+    .from("documents")
+    .update(values)
+    .eq("id", documentId)
+    .eq("case_id", caseId);
+
+  if (error) {
+    throw normalizeCaseWorkflowDatabaseError(error, {
+      operationLabel: "Document extraction",
+      fallbackMessage: "Unable to update this case document.",
+    });
+  }
+};
+
+const replaceDocumentExtractedFields = async (
+  context: CaseWorkflowContext,
+  documentId: string,
+  extractedFields: Array<{
+    confidence_score: number | null;
+    field_name: string;
+    field_value: string;
+  }>,
+) => {
+  const { error: deleteError } = await context.supabase
+    .from("extracted_fields")
+    .delete()
+    .eq("document_id", documentId);
+
+  if (deleteError) {
+    throw normalizeCaseWorkflowDatabaseError(deleteError, {
+      operationLabel: "Document extraction",
+      fallbackMessage: "Unable to refresh extracted document fields.",
+    });
+  }
+
+  if (extractedFields.length === 0) {
+    return;
+  }
+
+  const { error: insertError } = await context.supabase.from("extracted_fields").insert(
+    extractedFields.map((field) => ({
+      document_id: documentId,
+      field_name: field.field_name,
+      field_value: field.field_value,
+      confidence_score: field.confidence_score,
+      manually_corrected: false,
+    })),
+  );
+
+  if (insertError) {
+    throw normalizeCaseWorkflowDatabaseError(insertError, {
+      operationLabel: "Document extraction",
+      fallbackMessage: "Unable to store extracted document fields.",
+    });
+  }
+};
+
+const downloadCaseDocumentBuffer = async (
+  context: CaseWorkflowContext,
+  document: Pick<DocumentRecord, "file_path">,
+) => {
+  const { data, error } = await context.supabase.storage
+    .from("case-documents")
+    .download(document.file_path);
+
+  if (error || !data) {
+    throw new Error(
+      error?.message ??
+        "Unable to download the uploaded document for local extraction in this build.",
+    );
+  }
+
+  return data.arrayBuffer();
+};
+
+const buildDocumentExtractionTimelineEvent = ({
+  caseId,
+  documentType,
+  errorMessage,
+  extractedFieldCount,
+  status,
+  versionNumber,
+}: {
+  caseId: string;
+  documentType: string;
+  errorMessage: string | null;
+  extractedFieldCount: number;
+  status: Extract<DocumentExtractionStatus, "succeeded" | "failed">;
+  versionNumber: number;
+}): TimelineEventInsert => {
+  const documentLabel = getDocumentTypeLabel(documentType);
+
+  if (status === "failed") {
+    return {
+      case_id: caseId,
+      event_type: "document_extraction_failed",
+      title: `${documentLabel} extraction failed`,
+      description: errorMessage ?? "Document extraction failed.",
+    };
+  }
+
+  const fieldSummary =
+    extractedFieldCount > 0
+      ? `Stored ${extractedFieldCount} normalized extracted field${extractedFieldCount === 1 ? "" : "s"} for version ${versionNumber}.`
+      : `Local extraction ran for version ${versionNumber}, but no supported fields were recognized.`;
+
+  return {
+    case_id: caseId,
+    event_type: "document_extracted",
+    title: `${documentLabel} extracted`,
+    description: fieldSummary,
+  };
+};
+
 const updateExistingCaseNote = async (
   context: CaseWorkflowContext,
   caseId: string,
@@ -293,6 +457,39 @@ const assertCaseCanBeSubmittedForReview = ({
       "Re-run evaluation after recent document uploads before submitting this case for review.",
     );
   }
+};
+
+const assertLatestDocumentExtractionsResolvedForSubmission = async (
+  context: CaseWorkflowContext,
+  caseId: string,
+) => {
+  const unresolvedLatestDocuments = getLatestDocumentsByType(
+    await loadCaseDocuments(context, caseId),
+  ).filter((document) => hasUnresolvedDocumentExtraction(document.extraction_status));
+
+  if (unresolvedLatestDocuments.length > 0) {
+    throw new Error(
+      "Wait for document extraction to finish, or retry any failed or stale extraction, before submitting this case for review.",
+    );
+  }
+};
+
+const assertDocumentExtractionRetryAllowed = (document: DocumentRecord) => {
+  if (canRetryDocumentExtraction(document)) {
+    return;
+  }
+
+  if (document.extraction_status === "processing") {
+    throw new Error(
+      `Document extraction is still running for this version. Retry becomes available after ${STALE_DOCUMENT_EXTRACTION_THRESHOLD_MINUTES} minutes if processing stays stuck.`,
+    );
+  }
+
+  if (document.extraction_status === "succeeded") {
+    throw new Error("Document extraction already succeeded for this version.");
+  }
+
+  throw new Error("Document extraction cannot be retried for this version.");
 };
 
 const persistReviewerCaseDecision = async (
@@ -391,6 +588,124 @@ const logSameStatusEvaluation = async (
   });
 };
 
+const failDocumentExtraction = async (
+  context: CaseWorkflowContext,
+  caseData: CaseRecord,
+  document: DocumentRecord,
+  errorMessage: string,
+): Promise<DocumentExtractionLifecycleResult> => {
+  await updateDocumentRecord(context, caseData.id, document.id, {
+    extraction_completed_at: new Date().toISOString(),
+    extraction_error: errorMessage,
+    extraction_status: "failed",
+  });
+
+  await writeCaseTimelineEventBestEffort(
+    context,
+    buildDocumentExtractionTimelineEvent({
+      caseId: caseData.id,
+      documentType: document.document_type,
+      errorMessage,
+      extractedFieldCount: 0,
+      status: "failed",
+      versionNumber: document.version_number,
+    }),
+  );
+
+  return {
+    extractedFieldCount: 0,
+    extractionError: errorMessage,
+    extractionStatus: "failed",
+    reevaluationRequirementCount: null,
+    reevaluationStatus: null,
+  };
+};
+
+const extractCaseDocumentAndMaybeReevaluate = async (
+  context: CaseWorkflowContext,
+  caseData: CaseRecord,
+  document: DocumentRecord,
+): Promise<DocumentExtractionLifecycleResult> => {
+  await updateDocumentRecord(context, caseData.id, document.id, {
+    extraction_completed_at: null,
+    extraction_error: null,
+    extraction_started_at: new Date().toISOString(),
+    extraction_status: "processing",
+  });
+
+  let extractedFieldCount = 0;
+
+  try {
+    const fileBuffer = await downloadCaseDocumentBuffer(context, document);
+    const extractionResult = await extractDocumentWithLocalStub({
+      documentType: document.document_type,
+      fileBuffer,
+      fileName: document.file_name,
+    });
+
+    if (extractionResult.status === "failed") {
+      return failDocumentExtraction(context, caseData, document, extractionResult.errorMessage);
+    }
+
+    extractedFieldCount = extractionResult.extractedFields.length;
+
+    await replaceDocumentExtractedFields(
+      context,
+      document.id,
+      extractionResult.extractedFields.map((field) => ({
+        confidence_score: field.confidenceScore,
+        field_name: field.fieldName,
+        field_value: field.fieldValue,
+      })),
+    );
+
+    await updateDocumentRecord(context, caseData.id, document.id, {
+      extraction_completed_at: new Date().toISOString(),
+      extraction_error: null,
+      extraction_status: "succeeded",
+    });
+
+    await writeCaseTimelineEventBestEffort(
+      context,
+      buildDocumentExtractionTimelineEvent({
+        caseId: caseData.id,
+        documentType: document.document_type,
+        errorMessage: null,
+        extractedFieldCount,
+        status: "succeeded",
+        versionNumber: document.version_number,
+      }),
+    );
+  } catch (error) {
+    const normalizedError =
+      error instanceof Error ? error.message : "Document extraction failed unexpectedly.";
+
+    return failDocumentExtraction(context, caseData, document, normalizedError);
+  }
+
+  if (!canRerunDeterministicEvaluation(caseData.status)) {
+    return {
+      extractedFieldCount,
+      extractionError: null,
+      extractionStatus: "succeeded",
+      reevaluationRequirementCount: null,
+      reevaluationStatus: null,
+    };
+  }
+
+  const reevaluationResult = await reevaluateCaseAfterUploads(context, {
+    caseId: caseData.id,
+  });
+
+  return {
+    extractedFieldCount,
+    extractionError: null,
+    extractionStatus: "succeeded",
+    reevaluationRequirementCount: reevaluationResult.requirementCount,
+    reevaluationStatus: reevaluationResult.status,
+  };
+};
+
 const transitionSubmittedCaseByReviewer = async (
   context: CaseWorkflowContext,
   input: { caseId: string; reviewerComment: string | null },
@@ -481,7 +796,7 @@ export const registerUploadedCaseDocument = async (
   context: CaseWorkflowContext,
   input: RegisterUploadedCaseDocumentInput,
 ) => {
-  await loadOwnedCase(context, input.caseId);
+  const caseData = await loadOwnedCase(context, input.caseId);
 
   const caseStoragePrefix = `${context.userId}/${input.caseId}/${input.uploadRegistrationId}/`;
 
@@ -509,11 +824,40 @@ export const registerUploadedCaseDocument = async (
     );
   }
 
+  const extractionLifecycle = registeredDocument.created_new
+    ? await extractCaseDocumentAndMaybeReevaluate(context, caseData, {
+        case_id: registeredDocument.case_id,
+        created_at: registeredDocument.created_at,
+        document_type: registeredDocument.document_type,
+        extraction_completed_at: registeredDocument.extraction_completed_at,
+        extraction_error: registeredDocument.extraction_error,
+        extraction_started_at: registeredDocument.extraction_started_at,
+        extraction_status: registeredDocument.extraction_status as DocumentExtractionStatus,
+        file_name: registeredDocument.file_name,
+        file_path: registeredDocument.file_path,
+        id: registeredDocument.id,
+        upload_registration_id: registeredDocument.upload_registration_id,
+        upload_status: registeredDocument.upload_status,
+        version_number: registeredDocument.version_number,
+      })
+    : {
+        extractedFieldCount: 0,
+        extractionError: registeredDocument.extraction_error,
+        extractionStatus: registeredDocument.extraction_status as DocumentExtractionStatus,
+        reevaluationRequirementCount: null,
+        reevaluationStatus: null,
+      };
+
   return {
+    extractedFieldCount: extractionLifecycle.extractedFieldCount,
+    extractionError: extractionLifecycle.extractionError,
+    extractionStatus: extractionLifecycle.extractionStatus,
     documentId: registeredDocument.id,
     documentType: registeredDocument.document_type,
     versionNumber: registeredDocument.version_number,
     createdNew: registeredDocument.created_new,
+    reevaluationRequirementCount: extractionLifecycle.reevaluationRequirementCount,
+    reevaluationStatus: extractionLifecycle.reevaluationStatus,
   };
 };
 
@@ -593,6 +937,32 @@ export const reevaluateCaseAfterUploads = async (
   };
 };
 
+export const retryCaseDocumentExtraction = async (
+  context: CaseWorkflowContext,
+  input: RetryCaseDocumentExtractionInput,
+) => {
+  const caseData = await loadOwnedCase(context, input.caseId);
+  const document = await loadOwnedCaseDocument(context, input.caseId, input.documentId);
+  assertDocumentExtractionRetryAllowed(document);
+  const extractionLifecycle = await extractCaseDocumentAndMaybeReevaluate(
+    context,
+    caseData,
+    document,
+  );
+
+  return {
+    caseId: input.caseId,
+    documentId: document.id,
+    documentType: document.document_type,
+    extractedFieldCount: extractionLifecycle.extractedFieldCount,
+    extractionError: extractionLifecycle.extractionError,
+    extractionStatus: extractionLifecycle.extractionStatus,
+    reevaluationRequirementCount: extractionLifecycle.reevaluationRequirementCount,
+    reevaluationStatus: extractionLifecycle.reevaluationStatus,
+    versionNumber: document.version_number,
+  };
+};
+
 export const submitCaseForReview = async (
   context: CaseWorkflowContext,
   input: SubmitCaseForReviewInput,
@@ -604,6 +974,8 @@ export const submitCaseForReview = async (
     status: previousStatus,
     needsDocumentReevaluation: caseData.needs_document_reevaluation,
   });
+
+  await assertLatestDocumentExtractionsResolvedForSubmission(context, input.caseId);
 
   const nextStatus = assertValidCaseStatusTransition(previousStatus, "submitted");
 

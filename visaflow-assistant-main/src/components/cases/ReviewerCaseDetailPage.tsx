@@ -6,7 +6,7 @@ import { ArrowLeft, FileText, Loader2, AlertCircle, Shield, History } from "luci
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 import { useAuth } from "@/lib/auth";
-import { summarizeRequirementRows } from "@/lib/cases/requirements";
+import { getLatestDocumentsByType, summarizeRequirementRows } from "@/lib/cases/requirements";
 import { getDocumentTypeLabel, REQUIREMENT_STATUSES, type CaseStatusKey } from "@/lib/constants";
 import { buildSupabaseServerFnHeaders } from "@/lib/server-functions";
 import {
@@ -37,6 +37,8 @@ interface ReviewerCaseDetailPageProps {
 }
 
 const formatShortId = (value: string) => `${value.slice(0, 8)}...`;
+const formatExtractionStatusLabel = (status: Document["extraction_status"]) =>
+  status.replace(/_/g, " ");
 
 export function ReviewerCaseDetailPage({ caseId }: ReviewerCaseDetailPageProps) {
   const { isLoading: authLoading, isSchoolAdmin, session } = useAuth();
@@ -210,6 +212,9 @@ export function ReviewerCaseDetailPage({ caseId }: ReviewerCaseDetailPageProps) 
 
   const requirementSummary = summarizeRequirementRows(requirements);
   const canReviewCase = caseData.status === "submitted";
+  const latestDocumentIds = new Set(
+    getLatestDocumentsByType(documents).map((document) => document.id),
+  );
 
   return (
     <div className="mx-auto max-w-5xl space-y-5 p-6">
@@ -460,8 +465,15 @@ export function ReviewerCaseDetailPage({ caseId }: ReviewerCaseDetailPageProps) 
                       <p className="truncate text-sm font-medium">{document.file_name}</p>
                       <p className="text-xs text-muted-foreground">
                         {getDocumentTypeLabel(document.document_type)} - v{document.version_number}{" "}
-                        - {document.upload_status}
+                        - {latestDocumentIds.has(document.id) ? "current version" : "superseded"} -
+                        Upload {document.upload_status}
                       </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Extraction {formatExtractionStatusLabel(document.extraction_status)}
+                      </p>
+                      {document.extraction_error && (
+                        <p className="mt-1 text-xs text-destructive">{document.extraction_error}</p>
+                      )}
                     </div>
                   </div>
                   <span className="whitespace-nowrap text-xs text-muted-foreground">
