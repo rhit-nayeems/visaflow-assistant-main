@@ -458,7 +458,8 @@ export const reevaluateCaseAfterUploads = async (
       previousStatus: caseData.status,
       nextStatus,
       description: "Requirements re-evaluated after document uploads.",
-      reason: "Deterministic CPT requirement evaluation re-ran after new or updated documents were uploaded.",
+      reason:
+        "Deterministic CPT requirement evaluation re-ran after new or updated documents were uploaded.",
     });
   } else {
     await logSameStatusEvaluation(context, input.caseId, nextStatus);

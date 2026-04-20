@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildDocumentUploadTimelineEvent, runDeterministicCaseEvaluation } from "./workflows.server.ts";
+import {
+  buildDocumentUploadTimelineEvent,
+  runDeterministicCaseEvaluation,
+} from "./workflows.server.ts";
 import type { CaseRecord, DocumentRecord, ExtractedFieldRecord } from "./types";
 
 const buildCaseRecord = (status: CaseRecord["status"]): CaseRecord => ({
@@ -31,7 +34,8 @@ const buildDocumentRecord = (
   file_path: overrides.file_path ?? `user-123/case-123/upload-${versionNumber}/${documentType}.pdf`,
   document_type: overrides.document_type ?? documentType,
   version_number: overrides.version_number ?? versionNumber,
-  upload_registration_id: overrides.upload_registration_id ?? `upload-${documentType}-${versionNumber}`,
+  upload_registration_id:
+    overrides.upload_registration_id ?? `upload-${documentType}-${versionNumber}`,
   upload_status: overrides.upload_status ?? "uploaded",
   created_at: overrides.created_at ?? "2026-04-20T00:00:00.000Z",
 });

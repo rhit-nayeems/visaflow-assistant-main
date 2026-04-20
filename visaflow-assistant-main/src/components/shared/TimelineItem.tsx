@@ -22,7 +22,13 @@ interface TimelineItemProps {
   className?: string;
 }
 
-export function TimelineItem({ eventType, title, description, createdAt, className }: TimelineItemProps) {
+export function TimelineItem({
+  eventType,
+  title,
+  description,
+  createdAt,
+  className,
+}: TimelineItemProps) {
   const Icon = eventIcons[eventType] || eventIcons.default;
 
   return (

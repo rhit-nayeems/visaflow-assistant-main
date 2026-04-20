@@ -224,9 +224,7 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
       await load();
     } catch (error) {
       setUploadError(
-        error instanceof Error
-          ? error.message
-          : "Unable to register this uploaded document.",
+        error instanceof Error ? error.message : "Unable to register this uploaded document.",
       );
     } finally {
       setUploadLoading(false);
@@ -259,9 +257,7 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
       await load();
     } catch (error) {
       setReevaluateError(
-        error instanceof Error
-          ? error.message
-          : "Unable to re-run deterministic evaluation.",
+        error instanceof Error ? error.message : "Unable to re-run deterministic evaluation.",
       );
     } finally {
       setReevaluateLoading(false);
@@ -378,7 +374,12 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
           description={uploadNotice}
           action={
             hasPendingDocumentChanges && canRerunEvaluation ? (
-              <Button variant="outline" size="sm" onClick={handleReevaluate} disabled={reevaluateLoading}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleReevaluate}
+                disabled={reevaluateLoading}
+              >
                 {reevaluateLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                 Re-run now
               </Button>
@@ -387,18 +388,10 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
         />
       )}
       {reevaluateError && (
-        <AlertBanner
-          variant="error"
-          title="Evaluation not updated"
-          description={reevaluateError}
-        />
+        <AlertBanner variant="error" title="Evaluation not updated" description={reevaluateError} />
       )}
       {reevaluateNotice && (
-        <AlertBanner
-          variant="success"
-          title="Evaluation updated"
-          description={reevaluateNotice}
-        />
+        <AlertBanner variant="success" title="Evaluation updated" description={reevaluateNotice} />
       )}
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -640,13 +633,20 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
                 {uploadFile && (
                   <div className="flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">{uploadFile.name}</p>
+                      <p className="text-sm font-medium text-foreground truncate">
+                        {uploadFile.name}
+                      </p>
                       <p className="text-xs text-muted-foreground">
-                        {getDocumentTypeLabel(selectedDocumentType)} - {uploadFile.size.toLocaleString()} bytes
+                        {getDocumentTypeLabel(selectedDocumentType)} -{" "}
+                        {uploadFile.size.toLocaleString()} bytes
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Button variant="outline" onClick={resetUploadSelection} disabled={uploadLoading}>
+                      <Button
+                        variant="outline"
+                        onClick={resetUploadSelection}
+                        disabled={uploadLoading}
+                      >
                         Clear
                       </Button>
                       <Button onClick={handleUpload} disabled={uploadLoading}>
@@ -679,13 +679,16 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
                       <div className="min-w-0">
                         <p className="text-sm font-medium truncate">{document.file_name}</p>
                         <p className="text-xs text-muted-foreground">
-                          {getDocumentTypeLabel(document.document_type)} - v{document.version_number} -{" "}
+                          {getDocumentTypeLabel(document.document_type)} - v
+                          {document.version_number} -{" "}
                           {formatDistanceToNow(new Date(document.created_at), { addSuffix: true })}
                         </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className="text-xs font-medium text-success">{document.upload_status}</span>
+                      <span className="text-xs font-medium text-success">
+                        {document.upload_status}
+                      </span>
                       <Button
                         variant="outline"
                         size="sm"
@@ -771,11 +774,7 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
         <TabsContent value="notes">
           <div className="space-y-4">
             {noteError && (
-              <AlertBanner
-                variant="error"
-                title="Note not saved"
-                description={noteError}
-              />
+              <AlertBanner variant="error" title="Note not saved" description={noteError} />
             )}
             <div className="flex gap-2">
               <textarea
@@ -820,4 +819,3 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
     </div>
   );
 }
-
