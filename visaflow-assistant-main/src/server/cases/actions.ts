@@ -1,4 +1,4 @@
-import { createServerFn } from "@tanstack/react-start";
+﻿import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import {
   validateAddCaseNoteInput,
@@ -6,6 +6,7 @@ import {
   validateReevaluateCaseAfterUploadsInput,
   validateRegisterUploadedCaseDocumentInput,
   validateSaveCaseDraftInput,
+  validateSubmitCaseForReviewInput,
 } from "./validation";
 
 export const saveCaseDraftAction = createServerFn({ method: "POST" })
@@ -60,6 +61,21 @@ export const reevaluateCaseAfterUploadsAction = createServerFn({ method: "POST" 
     const { reevaluateCaseAfterUploads } = await import("./workflows.server");
 
     return reevaluateCaseAfterUploads(
+      {
+        supabase: context.supabase,
+        userId: context.userId,
+      },
+      data,
+    );
+  });
+
+export const submitCaseForReviewAction = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(validateSubmitCaseForReviewInput)
+  .handler(async ({ context, data }) => {
+    const { submitCaseForReview } = await import("./workflows.server");
+
+    return submitCaseForReview(
       {
         supabase: context.supabase,
         userId: context.userId,

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+﻿import { useCallback, useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { formatDistanceToNow } from "date-fns";
@@ -32,6 +32,7 @@ import {
   addCaseNoteAction,
   registerUploadedCaseDocumentAction,
   reevaluateCaseAfterUploadsAction,
+  submitCaseForReviewAction,
 } from "@/server/cases/actions";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -90,11 +91,15 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
   const [reevaluateLoading, setReevaluateLoading] = useState(false);
   const [reevaluateError, setReevaluateError] = useState("");
   const [reevaluateNotice, setReevaluateNotice] = useState("");
+  const [submitLoading, setSubmitLoading] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+  const [submitNotice, setSubmitNotice] = useState("");
   const [hasPendingDocumentChanges, setHasPendingDocumentChanges] = useState(false);
 
   const addCaseNoteMutation = useServerFn(addCaseNoteAction);
   const registerUploadedCaseDocumentMutation = useServerFn(registerUploadedCaseDocumentAction);
   const reevaluateCaseAfterUploadsMutation = useServerFn(reevaluateCaseAfterUploadsAction);
+  const submitCaseForReviewMutation = useServerFn(submitCaseForReviewAction);
 
   const load = useCallback(async () => {
     const [caseRes, docsRes, reqsRes, tlRes, auditRes, notesRes] = await Promise.all([
@@ -183,6 +188,8 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
     setUploadNotice("");
     setReevaluateError("");
     setReevaluateNotice("");
+    setSubmitError("");
+    setSubmitNotice("");
 
     const nextUploadRegistrationId = uploadRegistrationId ?? crypto.randomUUID();
     const filePath = `${user.id}/${caseData.id}/${nextUploadRegistrationId}/${uploadFile.name}`;
@@ -239,6 +246,8 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
     setReevaluateLoading(true);
     setReevaluateError("");
     setReevaluateNotice("");
+    setSubmitError("");
+    setSubmitNotice("");
 
     try {
       const previousStatus = caseData.status;
@@ -270,8 +279,37 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
     setUploadNotice("");
     setReevaluateError("");
     setReevaluateNotice("");
+    setSubmitError("");
+    setSubmitNotice("");
     resetUploadSelection();
     setHasPendingDocumentChanges(false);
+  };
+
+  const handleSubmitForReview = async () => {
+    if (!caseData) {
+      return;
+    }
+
+    setSubmitLoading(true);
+    setSubmitError("");
+    setSubmitNotice("");
+
+    try {
+      await submitCaseForReviewMutation({
+        data: { caseId },
+        headers: getServerFnHeaders(),
+      });
+
+      setHasPendingDocumentChanges(false);
+      setSubmitNotice("Case submitted for review. Your international office can now review it.");
+      await load();
+    } catch (error) {
+      setSubmitError(
+        error instanceof Error ? error.message : "Unable to submit this case for review.",
+      );
+    } finally {
+      setSubmitLoading(false);
+    }
   };
 
   if (loading) {
@@ -310,6 +348,23 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
     0,
   );
   const selectedTypeNextVersion = selectedTypeLatestVersion + 1;
+  const isReadyForSubmission = caseData.status === "ready_for_submission";
+  const canSubmitForReview = isReadyForSubmission && !hasPendingDocumentChanges;
+  const submitHelperText = (() => {
+    if (hasPendingDocumentChanges) {
+      return "Re-run evaluation after recent document uploads before submitting this case.";
+    }
+
+    if (isReadyForSubmission) {
+      return "Submit this case to hand it off for school review.";
+    }
+
+    if (caseData.status === "submitted") {
+      return "This case has already been submitted and is waiting for review.";
+    }
+
+    return "Resolve blockers and re-run evaluation until the case is ready for submission.";
+  })();
 
   return (
     <div className="max-w-5xl mx-auto space-y-5 p-6">
@@ -336,10 +391,15 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
           </p>
         </div>
         <div className="flex max-w-xs flex-col items-end gap-2 text-right">
+          <Button onClick={handleSubmitForReview} disabled={submitLoading || !canSubmitForReview}>
+            {submitLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            Submit for review
+          </Button>
+          <p className="text-xs text-muted-foreground">{submitHelperText}</p>
           <Button
             variant="outline"
             onClick={handleReevaluate}
-            disabled={reevaluateLoading || !canRerunEvaluation}
+            disabled={reevaluateLoading || submitLoading || !canRerunEvaluation}
           >
             {reevaluateLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             Re-run evaluation
@@ -392,6 +452,12 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
       )}
       {reevaluateNotice && (
         <AlertBanner variant="success" title="Evaluation updated" description={reevaluateNotice} />
+      )}
+      {submitError && (
+        <AlertBanner variant="error" title="Submission not completed" description={submitError} />
+      )}
+      {submitNotice && (
+        <AlertBanner variant="success" title="Case submitted" description={submitNotice} />
       )}
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -549,7 +615,7 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
                 <Button
                   variant="outline"
                   onClick={handleReevaluate}
-                  disabled={reevaluateLoading || !canRerunEvaluation}
+                  disabled={reevaluateLoading || submitLoading || !canRerunEvaluation}
                 >
                   {reevaluateLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                   Re-run evaluation
@@ -819,3 +885,6 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
     </div>
   );
 }
+
+
+

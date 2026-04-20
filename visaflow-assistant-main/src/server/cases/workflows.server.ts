@@ -1,4 +1,4 @@
-import {
+﻿import {
   deriveCaseStatusFromRequirements,
   evaluateCaseRequirements,
 } from "../../lib/cases/requirements.ts";
@@ -31,6 +31,7 @@ import type {
   RegisterUploadedCaseDocumentInput,
   ReevaluateCaseAfterUploadsInput,
   SaveCaseDraftInput,
+  SubmitCaseForReviewInput,
 } from "./validation.ts";
 
 const FINALIZE_CASE_REQUIREMENT_EVALUATION_RPC = "finalize_case_requirement_evaluation";
@@ -61,6 +62,22 @@ const persistDraftMutation = async (
     .from("cases")
     .update(buildDraftMutation(input))
     .eq("id", caseId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+};
+
+const persistCaseStatus = async (
+  context: CaseWorkflowContext,
+  caseId: string,
+  nextStatus: CaseStatus,
+) => {
+  const { error } = await context.supabase
+    .from("cases")
+    .update({ status: nextStatus })
+    .eq("id", caseId)
+    .eq("user_id", context.userId);
 
   if (error) {
     throw new Error(error.message);
@@ -225,6 +242,12 @@ const loadCaseEvaluationState = async (context: CaseWorkflowContext, caseId: str
 };
 
 const formatCaseStatusLabel = (status: CaseStatus) => status.replace(/_/g, " ");
+
+const assertCaseCanBeSubmittedForReview = (status: CaseStatus) => {
+  if (status !== "ready_for_submission") {
+    throw new Error("Only cases that are ready for submission can be submitted for review.");
+  }
+};
 
 export const buildDocumentUploadTimelineEvent = ({
   caseId,
@@ -472,6 +495,34 @@ export const reevaluateCaseAfterUploads = async (
   };
 };
 
+export const submitCaseForReview = async (
+  context: CaseWorkflowContext,
+  input: SubmitCaseForReviewInput,
+) => {
+  const caseData = await loadOwnedCase(context, input.caseId);
+  const previousStatus = caseData.status;
+
+  assertCaseCanBeSubmittedForReview(previousStatus);
+
+  const nextStatus = assertValidCaseStatusTransition(previousStatus, "submitted");
+
+  await persistCaseStatus(context, input.caseId, nextStatus);
+
+  await writeStatusChangeHistoryBestEffort(context, {
+    caseId: input.caseId,
+    previousStatus,
+    nextStatus,
+    description: "Case submitted for review.",
+    reason:
+      "Student submitted the case for review after deterministic evaluation marked it ready for submission.",
+  });
+
+  return {
+    caseId: input.caseId,
+    status: nextStatus,
+  };
+};
+
 export const addCaseNote = async (context: CaseWorkflowContext, input: AddCaseNoteInput) => {
   await loadOwnedCase(context, input.caseId);
 
@@ -523,3 +574,4 @@ export const addCaseNote = async (context: CaseWorkflowContext, input: AddCaseNo
 
   return { noteId: data.id };
 };
+
