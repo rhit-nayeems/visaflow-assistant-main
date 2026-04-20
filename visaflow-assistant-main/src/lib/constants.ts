@@ -35,6 +35,10 @@ export const DOCUMENT_TYPES = [
   { value: "other", label: "Other" },
 ] as const;
 
+export const getDocumentTypeLabel = (documentType: string) =>
+  DOCUMENT_TYPES.find((option) => option.value === documentType)?.label ??
+  documentType.replace(/_/g, " ");
+
 export const ACCEPTED_FILE_TYPES = {
   "application/pdf": [".pdf"],
   "image/jpeg": [".jpg", ".jpeg"],

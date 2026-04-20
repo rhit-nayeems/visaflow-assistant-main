@@ -1,4 +1,4 @@
-import type { CaseNoteRecord, CaseRecord, CaseWorkflowContext } from "./types";
+import type { CaseNoteRecord, CaseRecord, CaseWorkflowContext } from "./types.ts";
 
 export const findOwnedCase = async (
   context: CaseWorkflowContext,

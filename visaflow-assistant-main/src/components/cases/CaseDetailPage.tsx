@@ -1,18 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/lib/auth";
-import { buildSupabaseServerFnHeaders } from "@/lib/server-functions";
-import { addCaseNoteAction } from "@/server/cases/actions";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { StatusBadge } from "@/components/shared/StatusBadge";
-import { SeverityBadge } from "@/components/shared/SeverityBadge";
-import { AlertBanner } from "@/components/shared/AlertBanner";
-import { EmptyState } from "@/components/shared/EmptyState";
-import { TimelineItem } from "@/components/shared/TimelineItem";
+import { formatDistanceToNow } from "date-fns";
 import {
   ArrowLeft,
   FileText,
@@ -23,12 +12,43 @@ import {
   MessageSquare,
   History,
   Shield,
+  Upload,
 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
-import type { CaseStatusKey } from "@/lib/constants";
-import { REQUIREMENT_STATUSES } from "@/lib/constants";
+import { useAuth } from "@/lib/auth";
+import { canRerunDeterministicEvaluation } from "@/lib/cases/status";
 import { getCaseNextRecommendedAction, summarizeRequirementRows } from "@/lib/cases/requirements";
-import { formatDistanceToNow } from "date-fns";
+import {
+  ACCEPTED_FILE_TYPES,
+  DOCUMENT_TYPES,
+  getDocumentTypeLabel,
+  MAX_FILE_SIZE,
+  REQUIREMENT_STATUSES,
+  type CaseStatusKey,
+} from "@/lib/constants";
+import { buildSupabaseServerFnHeaders } from "@/lib/server-functions";
+import {
+  addCaseNoteAction,
+  registerUploadedCaseDocumentAction,
+  reevaluateCaseAfterUploadsAction,
+} from "@/server/cases/actions";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { StatusBadge } from "@/components/shared/StatusBadge";
+import { SeverityBadge } from "@/components/shared/SeverityBadge";
+import { AlertBanner } from "@/components/shared/AlertBanner";
+import { EmptyState } from "@/components/shared/EmptyState";
+import { TimelineItem } from "@/components/shared/TimelineItem";
 
 type Case = Tables<"cases">;
 type Document = Tables<"documents">;
@@ -40,6 +60,12 @@ type CaseNote = Tables<"case_notes">;
 interface CaseDetailProps {
   caseId: string;
 }
+
+const DEFAULT_DOCUMENT_TYPE = DOCUMENT_TYPES[0]?.value ?? "offer_letter";
+const DOCUMENT_UPLOAD_ACCEPT = Object.values(ACCEPTED_FILE_TYPES).flat().join(",");
+const MAX_DOCUMENT_FILE_SIZE_MB = Math.round(MAX_FILE_SIZE / (1024 * 1024));
+
+const formatCaseStatusLabel = (status: string) => status.replace(/_/g, " ");
 
 export function CaseDetailPage({ caseId }: CaseDetailProps) {
   const { user, session } = useAuth();
@@ -54,8 +80,21 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
   const [noteLoading, setNoteLoading] = useState(false);
   const [noteError, setNoteError] = useState("");
   const [pendingNoteId, setPendingNoteId] = useState<string | null>(null);
+  const [selectedDocumentType, setSelectedDocumentType] = useState<string>(DEFAULT_DOCUMENT_TYPE);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadRegistrationId, setUploadRegistrationId] = useState<string | null>(null);
+  const [uploadInputKey, setUploadInputKey] = useState(0);
+  const [uploadLoading, setUploadLoading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+  const [uploadNotice, setUploadNotice] = useState("");
+  const [reevaluateLoading, setReevaluateLoading] = useState(false);
+  const [reevaluateError, setReevaluateError] = useState("");
+  const [reevaluateNotice, setReevaluateNotice] = useState("");
+  const [hasPendingDocumentChanges, setHasPendingDocumentChanges] = useState(false);
 
   const addCaseNoteMutation = useServerFn(addCaseNoteAction);
+  const registerUploadedCaseDocumentMutation = useServerFn(registerUploadedCaseDocumentAction);
+  const reevaluateCaseAfterUploadsMutation = useServerFn(reevaluateCaseAfterUploadsAction);
 
   const load = useCallback(async () => {
     const [caseRes, docsRes, reqsRes, tlRes, auditRes, notesRes] = await Promise.all([
@@ -95,6 +134,14 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
     load();
   }, [load]);
 
+  const getServerFnHeaders = () => buildSupabaseServerFnHeaders(session);
+
+  const resetUploadSelection = () => {
+    setUploadFile(null);
+    setUploadRegistrationId(null);
+    setUploadInputKey((currentKey) => currentKey + 1);
+  };
+
   const addNote = async () => {
     if (!newNote.trim() || !user) {
       return;
@@ -113,7 +160,7 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
           noteId,
           content: newNote.trim(),
         },
-        headers: buildSupabaseServerFnHeaders(session),
+        headers: getServerFnHeaders(),
       });
       setNewNote("");
       setPendingNoteId(null);
@@ -124,6 +171,111 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
     } finally {
       setNoteLoading(false);
     }
+  };
+
+  const handleUpload = async () => {
+    if (!uploadFile || !caseData || !user) {
+      return;
+    }
+
+    setUploadLoading(true);
+    setUploadError("");
+    setUploadNotice("");
+    setReevaluateError("");
+    setReevaluateNotice("");
+
+    const nextUploadRegistrationId = uploadRegistrationId ?? crypto.randomUUID();
+    const filePath = `${user.id}/${caseData.id}/${nextUploadRegistrationId}/${uploadFile.name}`;
+
+    setUploadRegistrationId(nextUploadRegistrationId);
+
+    const { error: storageUploadError } = await supabase.storage
+      .from("case-documents")
+      .upload(filePath, uploadFile, { upsert: true });
+
+    if (storageUploadError) {
+      setUploadError(storageUploadError.message);
+      setUploadLoading(false);
+      return;
+    }
+
+    try {
+      const registeredDocument = await registerUploadedCaseDocumentMutation({
+        data: {
+          caseId,
+          fileName: uploadFile.name,
+          filePath,
+          documentType: selectedDocumentType,
+          uploadRegistrationId: nextUploadRegistrationId,
+        },
+        headers: getServerFnHeaders(),
+      });
+
+      const documentLabel = getDocumentTypeLabel(registeredDocument.documentType);
+      const uploadSummary = registeredDocument.createdNew
+        ? registeredDocument.versionNumber > 1
+          ? `${documentLabel} saved as version ${registeredDocument.versionNumber}. Re-run evaluation to refresh requirements and case status.`
+          : `${documentLabel} uploaded. Re-run evaluation to refresh requirements and case status.`
+        : `${documentLabel} upload confirmed. No duplicate version was created.`;
+
+      setUploadNotice(uploadSummary);
+      setHasPendingDocumentChanges(true);
+      resetUploadSelection();
+      await load();
+    } catch (error) {
+      setUploadError(
+        error instanceof Error
+          ? error.message
+          : "Unable to register this uploaded document.",
+      );
+    } finally {
+      setUploadLoading(false);
+    }
+  };
+
+  const handleReevaluate = async () => {
+    if (!caseData) {
+      return;
+    }
+
+    setReevaluateLoading(true);
+    setReevaluateError("");
+    setReevaluateNotice("");
+
+    try {
+      const previousStatus = caseData.status;
+      const result = await reevaluateCaseAfterUploadsMutation({
+        data: { caseId },
+        headers: getServerFnHeaders(),
+      });
+
+      setHasPendingDocumentChanges(false);
+      setUploadNotice("");
+      setReevaluateNotice(
+        result.status === previousStatus
+          ? `Requirements re-evaluated. Status remains ${formatCaseStatusLabel(result.status)}.`
+          : `Requirements re-evaluated. Case status updated to ${formatCaseStatusLabel(result.status)}.`,
+      );
+      await load();
+    } catch (error) {
+      setReevaluateError(
+        error instanceof Error
+          ? error.message
+          : "Unable to re-run deterministic evaluation.",
+      );
+    } finally {
+      setReevaluateLoading(false);
+    }
+  };
+
+  const prepareReupload = (documentType: string) => {
+    setSelectedDocumentType(documentType);
+    setUploadError("");
+    setUploadNotice("");
+    setReevaluateError("");
+    setReevaluateNotice("");
+    resetUploadSelection();
+    setHasPendingDocumentChanges(false);
   };
 
   if (loading) {
@@ -153,10 +305,19 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
   const warnings = requirementSummary.warnings;
   const isChangePending = caseData.status === "change_pending";
   const nextAction = getCaseNextRecommendedAction(caseData.status, requirementSummary);
+  const canRerunEvaluation = canRerunDeterministicEvaluation(caseData.status);
+  const documentsForSelectedType = documents.filter(
+    (document) => document.document_type === selectedDocumentType,
+  );
+  const selectedTypeLatestVersion = documentsForSelectedType.reduce(
+    (latestVersion, document) => Math.max(latestVersion, document.version_number),
+    0,
+  );
+  const selectedTypeNextVersion = selectedTypeLatestVersion + 1;
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-5">
-      <div className="flex items-start justify-between">
+    <div className="max-w-5xl mx-auto space-y-5 p-6">
+      <div className="flex items-start justify-between gap-4">
         <div>
           <Link
             to="/cases"
@@ -178,6 +339,21 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
               : ""}
           </p>
         </div>
+        <div className="flex max-w-xs flex-col items-end gap-2 text-right">
+          <Button
+            variant="outline"
+            onClick={handleReevaluate}
+            disabled={reevaluateLoading || !canRerunEvaluation}
+          >
+            {reevaluateLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            Re-run evaluation
+          </Button>
+          <p className="text-xs text-muted-foreground">
+            {canRerunEvaluation
+              ? "After new uploads, re-run deterministic evaluation to refresh requirements and case status."
+              : "This case status is managed outside the deterministic upload review flow."}
+          </p>
+        </div>
       </div>
 
       {isChangePending && (
@@ -195,6 +371,35 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
         />
       )}
       {nextAction && <AlertBanner variant="info" title="Next step" description={nextAction} />}
+      {uploadNotice && (
+        <AlertBanner
+          variant={hasPendingDocumentChanges ? "info" : "success"}
+          title="Document update recorded"
+          description={uploadNotice}
+          action={
+            hasPendingDocumentChanges && canRerunEvaluation ? (
+              <Button variant="outline" size="sm" onClick={handleReevaluate} disabled={reevaluateLoading}>
+                {reevaluateLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                Re-run now
+              </Button>
+            ) : undefined
+          }
+        />
+      )}
+      {reevaluateError && (
+        <AlertBanner
+          variant="error"
+          title="Evaluation not updated"
+          description={reevaluateError}
+        />
+      )}
+      {reevaluateNotice && (
+        <AlertBanner
+          variant="success"
+          title="Evaluation updated"
+          description={reevaluateNotice}
+        />
+      )}
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
@@ -330,36 +535,170 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
         </TabsContent>
 
         <TabsContent value="documents">
-          {documents.length === 0 ? (
-            <EmptyState
-              icon={<FileText className="h-5 w-5 text-muted-foreground" />}
-              title="No documents"
-              description="Upload documents to support your CPT case."
-            />
-          ) : (
-            <div className="space-y-2">
-              {documents.map((document) => (
-                <div
-                  key={document.id}
-                  className="flex items-center justify-between rounded-lg border bg-card p-4 shadow-card"
+          <div className="space-y-4">
+            {uploadError && (
+              <AlertBanner
+                variant="error"
+                title="Document not uploaded"
+                description={uploadError}
+              />
+            )}
+
+            <Card className="shadow-card">
+              <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <CardTitle className="text-sm">Upload or re-upload documents</CardTitle>
+                  <CardDescription>
+                    Use a new upload to create the next document version. Retrying the same failed
+                    upload keeps the same registration ID and avoids duplicates.
+                  </CardDescription>
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={handleReevaluate}
+                  disabled={reevaluateLoading || !canRerunEvaluation}
                 >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
-                      <FileText className="h-4 w-4 text-primary" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium truncate">{document.file_name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {document.document_type.replace(/_/g, " ")} - v{document.version_number} -{" "}
-                        {formatDistanceToNow(new Date(document.created_at), { addSuffix: true })}
-                      </p>
+                  {reevaluateLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  Re-run evaluation
+                </Button>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
+                  <div>
+                    <Label className="text-xs">Document type</Label>
+                    <Select
+                      value={selectedDocumentType}
+                      onValueChange={(value) => {
+                        setSelectedDocumentType(value);
+                        setUploadError("");
+                        setUploadNotice("");
+                        setUploadRegistrationId(uploadFile ? crypto.randomUUID() : null);
+                      }}
+                    >
+                      <SelectTrigger className="mt-1">
+                        <SelectValue placeholder="Select document type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {DOCUMENT_TYPES.map((documentType) => (
+                          <SelectItem key={documentType.value} value={documentType.value}>
+                            {documentType.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="rounded-lg border-2 border-dashed p-5">
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                        <Upload className="h-4 w-4 text-primary" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-foreground">
+                          {documentsForSelectedType.length > 0
+                            ? `${getDocumentTypeLabel(selectedDocumentType)} currently has ${documentsForSelectedType.length} version${documentsForSelectedType.length === 1 ? "" : "s"}.`
+                            : `Upload the first ${getDocumentTypeLabel(selectedDocumentType)} for this case.`}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {documentsForSelectedType.length > 0
+                            ? `Uploading again will create version ${selectedTypeNextVersion}.`
+                            : "Choose a file to add this required document to the case."}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          PDF, JPG, PNG, or Word up to {MAX_DOCUMENT_FILE_SIZE_MB}MB.
+                        </p>
+                        <input
+                          key={uploadInputKey}
+                          type="file"
+                          accept={DOCUMENT_UPLOAD_ACCEPT}
+                          disabled={uploadLoading}
+                          onChange={(event) => {
+                            const nextFile = event.target.files?.[0] || null;
+
+                            setUploadError("");
+                            setUploadNotice("");
+
+                            if (nextFile && nextFile.size > MAX_FILE_SIZE) {
+                              setUploadFile(null);
+                              setUploadRegistrationId(null);
+                              setUploadInputKey((currentKey) => currentKey + 1);
+                              setUploadError(
+                                `Files must be ${MAX_DOCUMENT_FILE_SIZE_MB}MB or smaller.`,
+                              );
+                              return;
+                            }
+
+                            setUploadFile(nextFile);
+                            setUploadRegistrationId(nextFile ? crypto.randomUUID() : null);
+                          }}
+                          className="mt-3 block w-full text-sm"
+                        />
+                      </div>
                     </div>
                   </div>
-                  <span className="text-xs font-medium text-success">{document.upload_status}</span>
                 </div>
-              ))}
-            </div>
-          )}
+
+                {uploadFile && (
+                  <div className="flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">{uploadFile.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {getDocumentTypeLabel(selectedDocumentType)} - {uploadFile.size.toLocaleString()} bytes
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button variant="outline" onClick={resetUploadSelection} disabled={uploadLoading}>
+                        Clear
+                      </Button>
+                      <Button onClick={handleUpload} disabled={uploadLoading}>
+                        {uploadLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                        {selectedTypeLatestVersion > 0 ? "Upload new version" : "Upload document"}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {documents.length === 0 ? (
+              <EmptyState
+                icon={<FileText className="h-5 w-5 text-muted-foreground" />}
+                title="No documents"
+                description="Upload documents to support your CPT case."
+              />
+            ) : (
+              <div className="space-y-2">
+                {documents.map((document) => (
+                  <div
+                    key={document.id}
+                    className="flex items-center justify-between rounded-lg border bg-card p-4 shadow-card"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
+                        <FileText className="h-4 w-4 text-primary" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">{document.file_name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {getDocumentTypeLabel(document.document_type)} - v{document.version_number} -{" "}
+                          {formatDistanceToNow(new Date(document.created_at), { addSuffix: true })}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs font-medium text-success">{document.upload_status}</span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => prepareReupload(document.document_type)}
+                      >
+                        Re-upload
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </TabsContent>
 
         <TabsContent value="timeline">

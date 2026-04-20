@@ -1,28 +1,37 @@
-﻿import {
+import {
   deriveCaseStatusFromRequirements,
   evaluateCaseRequirements,
-} from "@/lib/cases/requirements";
-import { assertValidCaseStatusTransition } from "@/lib/cases/status";
-import { findOwnedCase, findOwnedCaseNote, loadOwnedCase } from "./authz.server";
+} from "../../lib/cases/requirements.ts";
+import {
+  assertValidCaseStatusTransition,
+  canRerunDeterministicEvaluation,
+} from "../../lib/cases/status.ts";
+import { getDocumentTypeLabel } from "../../lib/constants.ts";
+import { findOwnedCase, findOwnedCaseNote, loadOwnedCase } from "./authz.server.ts";
 import {
   writeCaseTimelineEventBestEffort,
   writeStatusChangeHistoryBestEffort,
-} from "./history.server";
+} from "./history.server.ts";
+import { normalizeCaseWorkflowDatabaseError } from "./database-errors.ts";
+import { registerCaseDocumentRecord } from "./document-registration.ts";
 import type {
   CaseInsert,
-  CaseWorkflowContext,
+  CaseRecord,
+  CaseStatus,
   CaseUpdate,
-  DocumentInsert,
+  CaseWorkflowContext,
   DocumentRecord,
   ExtractedFieldRecord,
   RequirementInsert,
-} from "./types";
+  TimelineEventInsert,
+} from "./types.ts";
 import type {
   AddCaseNoteInput,
   FinalizeCaseCreationAndEvaluateInput,
   RegisterUploadedCaseDocumentInput,
+  ReevaluateCaseAfterUploadsInput,
   SaveCaseDraftInput,
-} from "./validation";
+} from "./validation.ts";
 
 const FINALIZE_CASE_REQUIREMENT_EVALUATION_RPC = "finalize_case_requirement_evaluation";
 
@@ -36,10 +45,7 @@ const buildDraftMutation = (input: SaveCaseDraftInput): CaseUpdate => ({
   case_summary: input.caseSummary,
 });
 
-const buildDraftInsert = (
-  context: CaseWorkflowContext,
-  input: SaveCaseDraftInput,
-): CaseInsert => ({
+const buildDraftInsert = (context: CaseWorkflowContext, input: SaveCaseDraftInput): CaseInsert => ({
   ...(input.draftId ? { id: input.draftId } : {}),
   user_id: context.userId,
   ...buildDraftMutation(input),
@@ -153,45 +159,6 @@ const loadExtractedFields = async (
   return data ?? [];
 };
 
-const findExistingDocumentByUploadRegistrationId = async (
-  context: CaseWorkflowContext,
-  caseId: string,
-  uploadRegistrationId: string,
-): Promise<Pick<DocumentRecord, "id"> | null> => {
-  const { data, error } = await context.supabase
-    .from("documents")
-    .select("id")
-    .eq("case_id", caseId)
-    .eq("upload_registration_id", uploadRegistrationId)
-    .maybeSingle();
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  return data;
-};
-
-const loadNextDocumentVersionNumber = async (
-  context: CaseWorkflowContext,
-  caseId: string,
-  documentType: string,
-): Promise<number> => {
-  const { data, error } = await context.supabase
-    .from("documents")
-    .select("version_number")
-    .eq("case_id", caseId)
-    .eq("document_type", documentType)
-    .order("version_number", { ascending: false })
-    .limit(1);
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  return (data?.[0]?.version_number ?? 0) + 1;
-};
-
 const updateExistingCaseNote = async (
   context: CaseWorkflowContext,
   caseId: string,
@@ -234,14 +201,96 @@ const persistRequirementEvaluation = async (
   });
 
   if (error) {
-    throw new Error(error.message);
+    throw normalizeCaseWorkflowDatabaseError(error, {
+      operationLabel: "Case finalization",
+      fallbackMessage: "Unable to finalize this case.",
+    });
   }
 };
 
-export const createCaseDraft = async (
+const loadCaseEvaluationState = async (context: CaseWorkflowContext, caseId: string) => {
+  const caseData = await loadOwnedCase(context, caseId);
+  const [templateConfig, documents] = await Promise.all([
+    loadTemplateConfig(context, caseData.school_template_id),
+    loadCaseDocuments(context, caseId),
+  ]);
+  const extractedFields = await loadExtractedFields(context, documents);
+
+  return {
+    caseData,
+    templateConfig,
+    documents,
+    extractedFields,
+  };
+};
+
+const formatCaseStatusLabel = (status: CaseStatus) => status.replace(/_/g, " ");
+
+export const buildDocumentUploadTimelineEvent = ({
+  caseId,
+  documentType,
+  fileName,
+  versionNumber,
+}: {
+  caseId: string;
+  documentType: string;
+  fileName: string;
+  versionNumber: number;
+}): TimelineEventInsert => {
+  const documentLabel = getDocumentTypeLabel(documentType);
+  const isReupload = versionNumber > 1;
+
+  return {
+    case_id: caseId,
+    event_type: "document_uploaded",
+    title: `${documentLabel} ${isReupload ? "re-uploaded" : "uploaded"}`,
+    description: isReupload ? `${fileName} saved as version ${versionNumber}.` : fileName,
+  };
+};
+
+export const runDeterministicCaseEvaluation = ({
+  caseData,
+  documents,
+  extractedFields,
+  templateConfig,
+}: {
+  caseData: CaseRecord;
+  documents: DocumentRecord[];
+  extractedFields: ExtractedFieldRecord[];
+  templateConfig: unknown;
+}) => {
+  const evaluatedRequirements = evaluateCaseRequirements({
+    caseData,
+    documents,
+    extractedFields,
+    templateConfig,
+  });
+
+  const nextStatus = assertValidCaseStatusTransition(
+    caseData.status,
+    deriveCaseStatusFromRequirements(evaluatedRequirements),
+  );
+
+  return {
+    evaluatedRequirements,
+    nextStatus,
+  };
+};
+
+const logSameStatusEvaluation = async (
   context: CaseWorkflowContext,
-  input: SaveCaseDraftInput,
+  caseId: string,
+  status: CaseStatus,
 ) => {
+  await writeCaseTimelineEventBestEffort(context, {
+    case_id: caseId,
+    event_type: "case_evaluated",
+    title: "Requirements re-evaluated",
+    description: `Deterministic evaluation completed. Status remains ${formatCaseStatusLabel(status)}.`,
+  });
+};
+
+export const createCaseDraft = async (context: CaseWorkflowContext, input: SaveCaseDraftInput) => {
   await assertActiveSchoolSelection(context, input);
 
   if (input.draftId) {
@@ -299,10 +348,7 @@ export const updateCaseDraft = async (
   return { caseId: input.caseId };
 };
 
-export const saveCaseDraft = async (
-  context: CaseWorkflowContext,
-  input: SaveCaseDraftInput,
-) => {
+export const saveCaseDraft = async (context: CaseWorkflowContext, input: SaveCaseDraftInput) => {
   if (input.caseId) {
     return updateCaseDraft(context, { ...input, caseId: input.caseId });
   }
@@ -322,85 +368,49 @@ export const registerUploadedCaseDocument = async (
     throw new Error("Uploaded files must stay inside the current case folder.");
   }
 
-  const existingDocument = await findExistingDocumentByUploadRegistrationId(
-    context,
-    input.caseId,
-    input.uploadRegistrationId,
-  );
-
-  if (existingDocument) {
-    return { documentId: existingDocument.id };
-  }
-
-  const versionNumber = await loadNextDocumentVersionNumber(
-    context,
-    input.caseId,
-    input.documentType,
-  );
-
-  const documentInsert: DocumentInsert = {
-    case_id: input.caseId,
-    file_name: input.fileName,
-    file_path: input.filePath,
-    document_type: input.documentType,
-    upload_registration_id: input.uploadRegistrationId,
-    upload_status: "uploaded",
-    version_number: versionNumber,
-  };
-
-  const { data, error } = await context.supabase
-    .from("documents")
-    .insert(documentInsert)
-    .select("id")
-    .single();
-
-  if (error || !data) {
-    const duplicateDocument = await findExistingDocumentByUploadRegistrationId(
-      context,
-      input.caseId,
-      input.uploadRegistrationId,
-    );
-
-    if (duplicateDocument) {
-      return { documentId: duplicateDocument.id };
-    }
-
-    throw new Error(error?.message ?? "Unable to register the uploaded document.");
-  }
-
-  await writeCaseTimelineEventBestEffort(context, {
-    case_id: input.caseId,
-    event_type: "document_uploaded",
-    title: "Offer letter uploaded",
-    description: input.fileName,
+  const registeredDocument = await registerCaseDocumentRecord(context.supabase, {
+    caseId: input.caseId,
+    documentType: input.documentType,
+    fileName: input.fileName,
+    filePath: input.filePath,
+    uploadRegistrationId: input.uploadRegistrationId,
   });
 
-  return { documentId: data.id };
+  if (registeredDocument.created_new) {
+    await writeCaseTimelineEventBestEffort(
+      context,
+      buildDocumentUploadTimelineEvent({
+        caseId: input.caseId,
+        documentType: registeredDocument.document_type,
+        fileName: registeredDocument.file_name,
+        versionNumber: registeredDocument.version_number,
+      }),
+    );
+  }
+
+  return {
+    documentId: registeredDocument.id,
+    documentType: registeredDocument.document_type,
+    versionNumber: registeredDocument.version_number,
+    createdNew: registeredDocument.created_new,
+  };
 };
 
 export const finalizeCaseCreationAndEvaluate = async (
   context: CaseWorkflowContext,
   input: FinalizeCaseCreationAndEvaluateInput,
 ) => {
-  const caseData = await loadOwnedCase(context, input.caseId);
+  const { caseData, templateConfig, documents, extractedFields } = await loadCaseEvaluationState(
+    context,
+    input.caseId,
+  );
 
-  const [templateConfig, documents] = await Promise.all([
-    loadTemplateConfig(context, caseData.school_template_id),
-    loadCaseDocuments(context, input.caseId),
-  ]);
-  const extractedFields = await loadExtractedFields(context, documents);
-
-  const evaluatedRequirements = evaluateCaseRequirements({
+  const { evaluatedRequirements, nextStatus } = runDeterministicCaseEvaluation({
     caseData,
     documents,
     extractedFields,
     templateConfig,
   });
-
-  const nextStatus = assertValidCaseStatusTransition(
-    caseData.status,
-    deriveCaseStatusFromRequirements(evaluatedRequirements),
-  );
 
   await persistRequirementEvaluation(context, input.caseId, nextStatus, evaluatedRequirements);
 
@@ -420,10 +430,48 @@ export const finalizeCaseCreationAndEvaluate = async (
   };
 };
 
-export const addCaseNote = async (
+export const reevaluateCaseAfterUploads = async (
   context: CaseWorkflowContext,
-  input: AddCaseNoteInput,
+  input: ReevaluateCaseAfterUploadsInput,
 ) => {
+  const { caseData, templateConfig, documents, extractedFields } = await loadCaseEvaluationState(
+    context,
+    input.caseId,
+  );
+
+  if (!canRerunDeterministicEvaluation(caseData.status)) {
+    throw new Error("This case cannot be re-evaluated from its current status.");
+  }
+
+  const { evaluatedRequirements, nextStatus } = runDeterministicCaseEvaluation({
+    caseData,
+    documents,
+    extractedFields,
+    templateConfig,
+  });
+
+  await persistRequirementEvaluation(context, input.caseId, nextStatus, evaluatedRequirements);
+
+  if (caseData.status !== nextStatus) {
+    await writeStatusChangeHistoryBestEffort(context, {
+      caseId: input.caseId,
+      previousStatus: caseData.status,
+      nextStatus,
+      description: "Requirements re-evaluated after document uploads.",
+      reason: "Deterministic CPT requirement evaluation re-ran after new or updated documents were uploaded.",
+    });
+  } else {
+    await logSameStatusEvaluation(context, input.caseId, nextStatus);
+  }
+
+  return {
+    caseId: input.caseId,
+    status: nextStatus,
+    requirementCount: evaluatedRequirements.length,
+  };
+};
+
+export const addCaseNote = async (context: CaseWorkflowContext, input: AddCaseNoteInput) => {
   await loadOwnedCase(context, input.caseId);
 
   if (input.noteId) {
@@ -474,4 +522,3 @@ export const addCaseNote = async (
 
   return { noteId: data.id };
 };
-

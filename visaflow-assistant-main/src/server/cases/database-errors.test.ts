@@ -1,0 +1,75 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import {
+  formatCaseWorkflowSchemaDriftMessage,
+  isCaseWorkflowSchemaDriftError,
+  normalizeCaseWorkflowDatabaseError,
+} from "./database-errors.ts";
+
+test("maps missing RPC errors to an actionable migration message", () => {
+  const normalized = normalizeCaseWorkflowDatabaseError(
+    {
+      code: "PGRST202",
+      message: "Could not find the function public.register_case_document",
+    },
+    {
+      operationLabel: "Document registration",
+      fallbackMessage: "Unable to register the uploaded document.",
+    },
+  );
+
+  assert.equal(normalized.message, formatCaseWorkflowSchemaDriftMessage("Document registration"));
+});
+
+test("treats missing upload_registration_id column errors as schema drift", () => {
+  const error = {
+    code: "42703",
+    message: 'column "upload_registration_id" does not exist',
+  };
+
+  assert.equal(isCaseWorkflowSchemaDriftError(error), true);
+
+  const normalized = normalizeCaseWorkflowDatabaseError(error, {
+    operationLabel: "Case finalization",
+    fallbackMessage: "Unable to finalize this case.",
+  });
+
+  assert.equal(normalized.message, formatCaseWorkflowSchemaDriftMessage("Case finalization"));
+});
+
+test("preserves non-schema-drift database messages", () => {
+  const normalized = normalizeCaseWorkflowDatabaseError(
+    {
+      code: "23505",
+      message: "duplicate key value violates unique constraint",
+    },
+    {
+      operationLabel: "Document registration",
+      fallbackMessage: "Unable to register the uploaded document.",
+    },
+  );
+
+  assert.equal(normalized.message, "duplicate key value violates unique constraint");
+});
+
+test("does not treat duplicate upload registration conflicts as schema drift", () => {
+  const error = {
+    code: "23505",
+    message:
+      'duplicate key value violates unique constraint "documents_case_upload_registration_id_key"',
+    details:
+      "Key (case_id, upload_registration_id)=(11111111-1111-1111-1111-111111111111, upload-123) already exists.",
+  };
+
+  assert.equal(isCaseWorkflowSchemaDriftError(error), false);
+
+  const normalized = normalizeCaseWorkflowDatabaseError(error, {
+    operationLabel: "Document registration",
+    fallbackMessage: "Unable to register the uploaded document.",
+  });
+
+  assert.equal(
+    normalized.message,
+    'duplicate key value violates unique constraint "documents_case_upload_registration_id_key"',
+  );
+});

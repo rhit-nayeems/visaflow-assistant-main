@@ -8,6 +8,7 @@
     "build": "vite build && tsc --noEmit",
     "build:dev": "vite build --mode development && tsc --noEmit",
     "preview": "vite preview",
+    "test:cases": "node --test --experimental-strip-types src/server/cases/database-errors.test.ts src/server/cases/document-registration.test.ts src/server/cases/workflows.server.test.ts",
     "lint": "eslint .",
     "format": "prettier --write ."
   },
@@ -85,3 +86,4 @@
     "vite": "^7.3.1"
   }
 }
+

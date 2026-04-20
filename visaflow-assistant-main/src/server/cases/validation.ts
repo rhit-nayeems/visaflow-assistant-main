@@ -1,4 +1,4 @@
-﻿const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 export interface SaveCaseDraftInput {
   caseId?: string;
@@ -22,6 +22,10 @@ export interface RegisterUploadedCaseDocumentInput {
 }
 
 export interface FinalizeCaseCreationAndEvaluateInput {
+  caseId: string;
+}
+
+export interface ReevaluateCaseAfterUploadsInput {
   caseId: string;
 }
 
@@ -150,6 +154,18 @@ export const validateFinalizeCaseCreationAndEvaluateInput = (
   };
 };
 
+export const validateReevaluateCaseAfterUploadsInput = (
+  input: unknown,
+): ReevaluateCaseAfterUploadsInput => {
+  if (!isRecord(input)) {
+    throw new Error("Case re-evaluation input is required.");
+  }
+
+  return {
+    caseId: parseRequiredString(input, "caseId", "Case"),
+  };
+};
+
 export const validateAddCaseNoteInput = (input: unknown): AddCaseNoteInput => {
   if (!isRecord(input)) {
     throw new Error("Case note input is required.");
@@ -161,4 +177,3 @@ export const validateAddCaseNoteInput = (input: unknown): AddCaseNoteInput => {
     content: parseRequiredString(input, "content", "Note"),
   };
 };
-

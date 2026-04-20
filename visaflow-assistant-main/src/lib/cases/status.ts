@@ -1,4 +1,4 @@
-﻿import type { Tables } from "@/integrations/supabase/types";
+import type { Tables } from "../../integrations/supabase/types.ts";
 
 type CaseRecord = Tables<"cases">;
 type CaseStatus = Tables<"cases">["status"];
@@ -17,6 +17,14 @@ export const CASE_STATUS_TRANSITIONS: Record<CaseStatus, CaseStatus[]> = {
   change_pending: ["submitted", "approved", "denied"],
   completed: [],
 };
+
+export const DETERMINISTIC_REEVALUATION_STATUSES: CaseStatus[] = [
+  "draft",
+  "missing_documents",
+  "in_progress",
+  "blocked",
+  "ready_for_submission",
+];
 
 const APPROVAL_SENSITIVE_FIELDS: ApprovalSensitiveField[] = [
   "employer_name",
@@ -43,6 +51,9 @@ export const assertValidCaseStatusTransition = (
 
   return nextStatus;
 };
+
+export const canRerunDeterministicEvaluation = (status: CaseStatus) =>
+  DETERMINISTIC_REEVALUATION_STATUSES.includes(status);
 
 export const getApprovalSensitiveFieldChanges = (
   previousCase: Pick<CaseRecord, ApprovalSensitiveField | "status">,

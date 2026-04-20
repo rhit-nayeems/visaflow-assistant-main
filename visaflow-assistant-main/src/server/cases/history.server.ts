@@ -3,7 +3,7 @@ import type {
   CaseStatus,
   CaseWorkflowContext,
   TimelineEventInsert,
-} from "./types";
+} from "./types.ts";
 
 interface StatusHistoryInput {
   caseId: string;

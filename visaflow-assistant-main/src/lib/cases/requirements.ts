@@ -1,4 +1,4 @@
-﻿import type { Tables, TablesInsert } from "@/integrations/supabase/types";
+import type { Tables, TablesInsert } from "../../integrations/supabase/types.ts";
 
 type CaseRecord = Tables<"cases">;
 type DocumentRecord = Tables<"documents">;

@@ -10,6 +10,7 @@ const eventIcons: Record<string, React.ElementType> = {
   requirement_failed: AlertCircle,
   field_updated: Edit,
   note_added: FileText,
+  case_evaluated: CheckCircle,
   default: Clock,
 };
 

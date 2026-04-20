@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database, Tables, TablesInsert, TablesUpdate } from "@/integrations/supabase/types";
+import type { Database, Tables, TablesInsert, TablesUpdate } from "../../integrations/supabase/types.ts";
 
 export type CaseSupabaseClient = SupabaseClient<Database>;
 
