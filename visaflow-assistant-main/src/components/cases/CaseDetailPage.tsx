@@ -18,12 +18,14 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 import { useAuth } from "@/lib/auth";
 import {
+  hasUnresolvedDocumentExtraction,
   STALE_DOCUMENT_EXTRACTION_THRESHOLD_MINUTES,
   canRetryDocumentExtraction,
 } from "@/lib/cases/document-extraction-state";
 import { canRerunDeterministicEvaluation } from "@/lib/cases/status";
 import {
   getCaseNextRecommendedAction,
+  getLatestDocumentsBlockingSubmission,
   getLatestDocumentsByType,
   summarizeRequirementRows,
 } from "@/lib/cases/requirements";
@@ -100,6 +102,7 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
   const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [notes, setNotes] = useState<CaseNote[]>([]);
+  const [templateConfig, setTemplateConfig] = useState<unknown>(null);
   const [loading, setLoading] = useState(true);
   const [newNote, setNewNote] = useState("");
   const [noteLoading, setNoteLoading] = useState(false);
@@ -151,12 +154,22 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
         .eq("case_id", caseId)
         .order("created_at", { ascending: false }),
     ]);
-    setCaseData(caseRes.data);
+    const caseRecord = caseRes.data;
+    const templateRes = caseRecord?.school_template_id
+      ? await supabase
+          .from("school_templates")
+          .select("config_json")
+          .eq("id", caseRecord.school_template_id)
+          .maybeSingle()
+      : { data: null };
+
+    setCaseData(caseRecord);
     setDocuments(docsRes.data || []);
     setRequirements(reqsRes.data || []);
     setTimeline(tlRes.data || []);
     setAuditLogs(auditRes.data || []);
     setNotes(notesRes.data || []);
+    setTemplateConfig(templateRes.data?.config_json ?? null);
     setLoading(false);
   }, [caseId]);
 
@@ -409,29 +422,32 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
   const nextAction = getCaseNextRecommendedAction(caseData.status, requirementSummary);
   const canRerunEvaluation = canRerunDeterministicEvaluation(caseData.status);
   const latestDocuments = getLatestDocumentsByType(documents);
-  const latestDocumentIds = new Set(latestDocuments.map((document) => document.id));
-  const latestRetryableExtractions = latestDocuments.filter((document) =>
-    canRetryDocumentExtraction(document),
+  const latestDocumentsBlockingSubmission = getLatestDocumentsBlockingSubmission({
+    documents,
+    templateConfig,
+  });
+  const latestRelevantDocumentsRequiringReevaluation = latestDocumentsBlockingSubmission.filter(
+    (document) => hasUnresolvedDocumentExtraction(document.extraction_status),
   );
-  const latestFailedExtractions = latestDocuments.filter(
+  const latestDocumentIds = new Set(latestDocuments.map((document) => document.id));
+  const latestRetryableExtractions = latestRelevantDocumentsRequiringReevaluation.filter(
+    (document) => canRetryDocumentExtraction(document),
+  );
+  const latestFailedExtractions = latestRelevantDocumentsRequiringReevaluation.filter(
     (document) => document.extraction_status === "failed",
   );
-  const latestRetryablePendingExtractions = latestDocuments.filter(
+  const latestRetryablePendingExtractions = latestRelevantDocumentsRequiringReevaluation.filter(
     (document) => document.extraction_status === "pending",
   );
-  const latestStaleProcessingExtractions = latestDocuments.filter(
+  const latestStaleProcessingExtractions = latestRelevantDocumentsRequiringReevaluation.filter(
     (document) =>
       document.extraction_status === "processing" && canRetryDocumentExtraction(document),
   );
-  const latestActiveProcessingExtractions = latestDocuments.filter(
+  const latestActiveProcessingExtractions = latestRelevantDocumentsRequiringReevaluation.filter(
     (document) =>
       document.extraction_status === "processing" && !canRetryDocumentExtraction(document),
   );
-  const hasBlockingLatestExtractions =
-    latestFailedExtractions.length > 0 ||
-    latestRetryablePendingExtractions.length > 0 ||
-    latestStaleProcessingExtractions.length > 0 ||
-    latestActiveProcessingExtractions.length > 0;
+  const hasBlockingLatestExtractions = latestRelevantDocumentsRequiringReevaluation.length > 0;
   const documentsForSelectedType = documents.filter(
     (document) => document.document_type === selectedDocumentType,
   );
@@ -446,9 +462,7 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
   const canResubmitForReview = caseData.status === "change_pending";
   const needsDocumentReevaluation = caseData.needs_document_reevaluation;
   const canSubmitForReview =
-    (isReadyForSubmission || canResubmitForReview) &&
-    !needsDocumentReevaluation &&
-    !hasBlockingLatestExtractions;
+    (isReadyForSubmission || canResubmitForReview) && !hasBlockingLatestExtractions;
   const submitButtonLabel = canResubmitForReview ? "Resubmit for review" : "Submit for review";
   const submitHelperText = (() => {
     if (latestRetryableExtractions.length > 0) {
@@ -457,10 +471,6 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
 
     if (latestActiveProcessingExtractions.length > 0) {
       return "Wait for current document extraction to finish before submitting this case.";
-    }
-
-    if (needsDocumentReevaluation) {
-      return "Re-run evaluation after recent document uploads before submitting this case.";
     }
 
     if (isReadyForSubmission) {
@@ -617,23 +627,21 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
             .join(", ")}.`}
         />
       )}
-      {needsDocumentReevaluation && (
+      {needsDocumentReevaluation && !hasBlockingLatestExtractions && canRerunEvaluation && (
         <AlertBanner
-          variant="warning"
-          title="Evaluation refresh required"
-          description="Recent document changes were recorded. Re-run deterministic evaluation before submitting this case for review."
+          variant="info"
+          title="Evaluation refresh available"
+          description="Latest required document extractions are already resolved. You can re-run deterministic evaluation now, or submit this case and VisaFlow will clear the leftover reevaluation flag automatically."
           action={
-            canRerunEvaluation ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleReevaluate}
-                disabled={reevaluateLoading}
-              >
-                {reevaluateLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                Re-run now
-              </Button>
-            ) : undefined
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleReevaluate}
+              disabled={reevaluateLoading}
+            >
+              {reevaluateLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              Re-run now
+            </Button>
           }
         />
       )}

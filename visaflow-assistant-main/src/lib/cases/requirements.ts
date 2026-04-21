@@ -274,6 +274,50 @@ export const getLatestDocumentsByType = (documents: DocumentRecord[]): DocumentR
   return Array.from(latestDocuments.values());
 };
 
+const getSubmissionBlockingDocumentTypeSet = (templateConfig: unknown) => {
+  const normalizedConfig = normalizeCaseTemplateConfig(templateConfig);
+  const documentTypes = new Set<string>();
+
+  for (const requirement of normalizedConfig.requirements ?? []) {
+    if (requirement.severity !== "blocker") {
+      continue;
+    }
+
+    if (requirement.type !== "document" && requirement.type !== "extracted_field") {
+      continue;
+    }
+
+    documentTypes.add(requirement.documentType ?? "offer_letter");
+  }
+
+  return documentTypes;
+};
+
+export const getSubmissionBlockingDocumentTypes = (templateConfig: unknown): string[] =>
+  Array.from(getSubmissionBlockingDocumentTypeSet(templateConfig));
+
+export const isDocumentTypeRelevantToSubmission = ({
+  documentType,
+  templateConfig,
+}: {
+  documentType: string;
+  templateConfig: unknown;
+}) => getSubmissionBlockingDocumentTypeSet(templateConfig).has(documentType);
+
+export const getLatestDocumentsBlockingSubmission = ({
+  documents,
+  templateConfig,
+}: {
+  documents: DocumentRecord[];
+  templateConfig: unknown;
+}): DocumentRecord[] => {
+  const blockingDocumentTypes = getSubmissionBlockingDocumentTypeSet(templateConfig);
+
+  return getLatestDocumentsByType(documents).filter((document) =>
+    blockingDocumentTypes.has(document.document_type),
+  );
+};
+
 const evaluateDocumentRequirement = (
   caseId: string,
   requirement: TemplateRequirementConfig,

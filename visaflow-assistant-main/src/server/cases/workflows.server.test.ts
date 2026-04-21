@@ -5,6 +5,7 @@ import {
   approveCase,
   buildDocumentUploadTimelineEvent,
   denyCase,
+  reevaluateCaseAfterUploads,
   registerUploadedCaseDocument,
   retryCaseDocumentExtraction,
   requestCaseChanges,
@@ -187,6 +188,7 @@ const buildWorkflowContextForSubmission = (
   options: {
     caseOverrides?: Partial<CaseRecord>;
     documents?: DocumentRecord[];
+    templateConfig?: unknown;
   } = {},
 ): {
   context: CaseWorkflowContext;
@@ -198,7 +200,13 @@ const buildWorkflowContextForSubmission = (
   const timelineEvents: TimelineEventInsert[] = [];
   const auditEntries: AuditLogInsert[] = [];
   const caseUpdates: Array<Partial<CaseRecord>> = [];
-  const caseRecord = buildCaseRecord(status, options.caseOverrides);
+  const caseRecord = buildCaseRecord(status, {
+    ...options.caseOverrides,
+    school_template_id:
+      options.templateConfig === undefined
+        ? options.caseOverrides?.school_template_id
+        : (options.caseOverrides?.school_template_id ?? "template-123"),
+  });
   const documents = [...(options.documents ?? [])];
 
   const supabase = {
@@ -209,6 +217,10 @@ const buildWorkflowContextForSubmission = (
 
       if (table === "documents") {
         return createDocumentsTable();
+      }
+
+      if (table === "school_templates") {
+        return createSchoolTemplatesTable();
       }
 
       if (table === "case_timeline_events") {
@@ -311,6 +323,30 @@ const buildWorkflowContextForSubmission = (
         return {
           data: sortedDocuments,
           error: null,
+        };
+      },
+    };
+  }
+
+  function createSchoolTemplatesTable() {
+    let filters: Record<string, string> = {};
+
+    return {
+      select() {
+        filters = {};
+        return this;
+      },
+      eq(column: string, value: string) {
+        filters[column] = value;
+        return this;
+      },
+      async single() {
+        const matchesTemplate =
+          caseRecord.school_template_id !== null && filters.id === caseRecord.school_template_id;
+
+        return {
+          data: matchesTemplate ? { config_json: options.templateConfig ?? null } : null,
+          error: matchesTemplate ? null : new Error("Template not found."),
         };
       },
     };
@@ -569,7 +605,6 @@ const buildStatefulWorkflowHarness = (): {
               nextDocumentNumber += 1;
               nextDocumentCreatedAtSecond += 1;
               documents.push(nextDocument);
-              caseRecord.needs_document_reevaluation = true;
 
               return {
                 data: {
@@ -984,6 +1019,56 @@ test("submission allows a change-pending case to be resubmitted for review", asy
   );
 });
 
+test("submission repairs a stale reevaluation flag when no relevant latest documents remain unresolved", async () => {
+  const workflow = buildWorkflowContextForSubmission("ready_for_submission", {
+    caseOverrides: {
+      needs_document_reevaluation: true,
+    },
+    documents: [
+      buildDocumentRecord("offer_letter", 1, {
+        extraction_status: "succeeded",
+      }),
+    ],
+  });
+
+  const result = await submitCaseForReview(workflow.context, {
+    caseId: workflow.caseRecord.id,
+  });
+
+  assert.equal(result.status, "submitted");
+  assert.equal(workflow.caseRecord.status, "submitted");
+  assert.equal(workflow.caseRecord.needs_document_reevaluation, false);
+  assert.deepEqual(workflow.caseUpdates, [
+    { needs_document_reevaluation: false },
+    { status: "submitted" },
+  ]);
+});
+
+test("submission keeps the reevaluation flag when a relevant latest document is still unresolved", async () => {
+  const workflow = buildWorkflowContextForSubmission("ready_for_submission", {
+    caseOverrides: {
+      needs_document_reevaluation: true,
+    },
+    documents: [
+      buildDocumentRecord("offer_letter", 1, {
+        extraction_status: "failed",
+      }),
+    ],
+  });
+
+  await assert.rejects(
+    () =>
+      submitCaseForReview(workflow.context, {
+        caseId: workflow.caseRecord.id,
+      }),
+    /Wait for document extraction to finish, or retry any failed or stale extraction, before submitting this case for review\./,
+  );
+
+  assert.equal(workflow.caseRecord.status, "ready_for_submission");
+  assert.equal(workflow.caseRecord.needs_document_reevaluation, true);
+  assert.equal(workflow.caseUpdates.length, 0);
+});
+
 test("submission rejects cases that are not eligible for review handoff", async () => {
   for (const status of ["draft", "missing_documents", "submitted", "approved"] as const) {
     const workflow = buildWorkflowContextForSubmission(status);
@@ -1003,7 +1088,7 @@ test("submission rejects cases that are not eligible for review handoff", async 
   }
 });
 
-test("submission rejects unresolved latest document extraction even when the reevaluation flag is false", async () => {
+test("submission rejects unresolved latest extraction on a relevant default document even when the reevaluation flag is false", async () => {
   const workflow = buildWorkflowContextForSubmission("ready_for_submission", {
     documents: [
       buildDocumentRecord("offer_letter", 1, {
@@ -1024,6 +1109,94 @@ test("submission rejects unresolved latest document extraction even when the ree
   assert.equal(workflow.caseUpdates.length, 0);
   assert.equal(workflow.timelineEvents.length, 0);
   assert.equal(workflow.auditEntries.length, 0);
+});
+
+test("submission rejects unresolved latest extraction when an extracted-field requirement makes the document relevant", async () => {
+  const workflow = buildWorkflowContextForSubmission("ready_for_submission", {
+    templateConfig: {
+      requirements: [
+        {
+          key: "offer_letter_uploaded",
+          label: "Offer letter uploaded",
+          severity: "blocker",
+          type: "document",
+          documentType: "offer_letter",
+        },
+        {
+          key: "sevis_id_available",
+          label: "SEVIS ID available",
+          severity: "blocker",
+          type: "extracted_field",
+          documentType: "i20",
+          extractedFieldName: "sevis_id",
+        },
+      ],
+    },
+    documents: [
+      buildDocumentRecord("offer_letter", 1, {
+        extraction_status: "succeeded",
+      }),
+      buildDocumentRecord("i20", 1, {
+        extraction_started_at: "2026-04-20T00:00:00.000Z",
+        extraction_status: "processing",
+      }),
+    ],
+  });
+
+  await assert.rejects(
+    () =>
+      submitCaseForReview(workflow.context, {
+        caseId: workflow.caseRecord.id,
+      }),
+    /Wait for document extraction to finish, or retry any failed or stale extraction, before submitting this case for review\./,
+  );
+
+  assert.equal(workflow.caseRecord.status, "ready_for_submission");
+  assert.equal(workflow.caseUpdates.length, 0);
+  assert.equal(workflow.timelineEvents.length, 0);
+  assert.equal(workflow.auditEntries.length, 0);
+});
+
+test("submission ignores unresolved latest extraction on an optional uploadable document that is not required by the active template", async () => {
+  const workflow = buildWorkflowContextForSubmission("ready_for_submission", {
+    templateConfig: {
+      requirements: [
+        {
+          key: "offer_letter_uploaded",
+          label: "Offer letter uploaded",
+          severity: "blocker",
+          type: "document",
+          documentType: "offer_letter",
+        },
+        {
+          key: "job_duties_available",
+          label: "Job duties available",
+          severity: "blocker",
+          type: "extracted_field",
+          documentType: "offer_letter",
+          extractedFieldName: "job_duties",
+        },
+      ],
+    },
+    documents: [
+      buildDocumentRecord("offer_letter", 1, {
+        extraction_status: "succeeded",
+      }),
+      buildDocumentRecord("other", 1, {
+        extraction_status: "failed",
+      }),
+    ],
+  });
+
+  const result = await submitCaseForReview(workflow.context, {
+    caseId: workflow.caseRecord.id,
+  });
+
+  assert.equal(result.status, "submitted");
+  assert.equal(workflow.caseRecord.status, "submitted");
+  assert.deepEqual(workflow.caseUpdates, [{ status: "submitted" }]);
+  assert.equal(workflow.timelineEvents.length, 1);
+  assert.equal(workflow.auditEntries.length, 1);
 });
 
 test("document upload automatically extracts and re-evaluates the case on success", async () => {
@@ -1069,6 +1242,37 @@ test("document upload automatically extracts and re-evaluates the case on succes
   assert.equal(workflow.caseRecord.status, "submitted");
 });
 
+test("uploading an optional document that fails extraction does not poison submission via the reevaluation flag", async () => {
+  const workflow = buildStatefulWorkflowHarness();
+  const filePath = `${workflow.caseRecord.user_id}/${workflow.caseRecord.id}/upload-other-1/other-supporting-doc.pdf`;
+
+  workflow.setStoredDocument(filePath, new Uint8Array([0, 159, 255, 0, 12, 4, 0, 255]));
+
+  const uploadResult = await registerUploadedCaseDocument(workflow.createContext(), {
+    caseId: workflow.caseRecord.id,
+    documentType: "other",
+    fileName: "other-supporting-doc.pdf",
+    filePath,
+    uploadRegistrationId: "upload-other-1",
+  });
+
+  assert.equal(uploadResult.createdNew, true);
+  assert.equal(uploadResult.extractionStatus, "failed");
+  assert.equal(workflow.caseRecord.needs_document_reevaluation, false);
+  assert.equal(
+    workflow.documents.find((document) => document.id === uploadResult.documentId)
+      ?.extraction_status,
+    "failed",
+  );
+
+  const submissionResult = await submitCaseForReview(workflow.createContext(), {
+    caseId: workflow.caseRecord.id,
+  });
+
+  assert.equal(submissionResult.status, "submitted");
+  assert.equal(workflow.caseRecord.status, "submitted");
+});
+
 test("failed extraction keeps submission blocked until retry succeeds", async () => {
   const workflow = buildStatefulWorkflowHarness();
   const filePath = `${workflow.caseRecord.user_id}/${workflow.caseRecord.id}/upload-offer-letter-2/offer-letter-v2.pdf`;
@@ -1093,7 +1297,7 @@ test("failed extraction keeps submission blocked until retry succeeds", async ()
       submitCaseForReview(workflow.createContext(), {
         caseId: workflow.caseRecord.id,
       }),
-    /Re-run evaluation after recent document uploads before submitting this case for review\./,
+    /Wait for document extraction to finish, or retry any failed or stale extraction, before submitting this case for review\./,
   );
 
   workflow.setStoredDocument(filePath, "Job Duties: Build product features and support releases");
@@ -1111,6 +1315,29 @@ test("failed extraction keeps submission blocked until retry succeeds", async ()
       ?.extraction_status,
     "succeeded",
   );
+});
+
+test("manual reevaluation preserves the case flag when the latest relevant document extraction is still unresolved", async () => {
+  const workflow = buildStatefulWorkflowHarness();
+  const filePath = `${workflow.caseRecord.user_id}/${workflow.caseRecord.id}/upload-offer-letter-2/offer-letter-v2.pdf`;
+
+  workflow.setStoredDocument(filePath, new Uint8Array([0, 159, 255, 0, 12, 4, 0, 255]));
+
+  await registerUploadedCaseDocument(workflow.createContext(), {
+    caseId: workflow.caseRecord.id,
+    documentType: "offer_letter",
+    fileName: "offer-letter-v2.pdf",
+    filePath,
+    uploadRegistrationId: "upload-offer-letter-2",
+  });
+
+  const reevaluationResult = await reevaluateCaseAfterUploads(workflow.createContext(), {
+    caseId: workflow.caseRecord.id,
+  });
+
+  assert.equal(reevaluationResult.status, "blocked");
+  assert.equal(workflow.caseRecord.status, "blocked");
+  assert.equal(workflow.caseRecord.needs_document_reevaluation, true);
 });
 
 test("retry rejects fresh processing extraction before it becomes stale", async () => {

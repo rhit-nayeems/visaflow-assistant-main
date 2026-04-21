@@ -1,7 +1,8 @@
 ﻿import {
   deriveCaseStatusFromRequirements,
   evaluateCaseRequirements,
-  getLatestDocumentsByType,
+  getLatestDocumentsBlockingSubmission,
+  isDocumentTypeRelevantToSubmission,
 } from "../../lib/cases/requirements.ts";
 import {
   STALE_DOCUMENT_EXTRACTION_THRESHOLD_MINUTES,
@@ -119,6 +120,35 @@ const persistCaseStatus = async (
   } = {},
 ) => {
   let query = context.supabase.from("cases").update({ status: nextStatus }).eq("id", caseId);
+
+  if (options.ownerScoped ?? true) {
+    query = query.eq("user_id", context.userId);
+  }
+
+  const { error } = await query;
+
+  if (error) {
+    throw normalizeCaseWorkflowDatabaseError(error, {
+      operationLabel: options.operationLabel ?? "Case update",
+      fallbackMessage: options.fallbackMessage ?? "Unable to update this case.",
+    });
+  }
+};
+
+const persistCaseDocumentReevaluationFlag = async (
+  context: CaseWorkflowContext,
+  caseId: string,
+  needsDocumentReevaluation: boolean,
+  options: {
+    ownerScoped?: boolean;
+    operationLabel?: string;
+    fallbackMessage?: string;
+  } = {},
+) => {
+  let query = context.supabase
+    .from("cases")
+    .update({ needs_document_reevaluation: needsDocumentReevaluation })
+    .eq("id", caseId);
 
   if (options.ownerScoped ?? true) {
     query = query.eq("user_id", context.userId);
@@ -439,39 +469,51 @@ const loadCaseEvaluationState = async (context: CaseWorkflowContext, caseId: str
 
 const formatCaseStatusLabel = (status: CaseStatus) => status.replace(/_/g, " ");
 
-const assertCaseCanBeSubmittedForReview = ({
-  status,
-  needsDocumentReevaluation,
-}: {
-  status: CaseStatus;
-  needsDocumentReevaluation: boolean;
-}) => {
+const assertCaseCanBeSubmittedForReview = ({ status }: { status: CaseStatus }) => {
   if (status !== "ready_for_submission" && status !== "change_pending") {
     throw new Error(
       "Only cases that are ready for submission or awaiting requested changes can be submitted for review.",
     );
   }
-
-  if (needsDocumentReevaluation) {
-    throw new Error(
-      "Re-run evaluation after recent document uploads before submitting this case for review.",
-    );
-  }
 };
 
-const assertLatestDocumentExtractionsResolvedForSubmission = async (
+const getLatestRelevantDocumentsRequiringReevaluation = ({
+  documents,
+  templateConfig,
+}: {
+  documents: DocumentRecord[];
+  templateConfig: unknown;
+}) =>
+  getLatestDocumentsBlockingSubmission({
+    documents,
+    templateConfig,
+  }).filter((document) => hasUnresolvedDocumentExtraction(document.extraction_status));
+
+const reconcileCaseDocumentReevaluationForSubmission = async (
   context: CaseWorkflowContext,
-  caseId: string,
+  caseData: CaseRecord,
+  templateConfig: unknown,
 ) => {
-  const unresolvedLatestDocuments = getLatestDocumentsByType(
-    await loadCaseDocuments(context, caseId),
-  ).filter((document) => hasUnresolvedDocumentExtraction(document.extraction_status));
+  const unresolvedLatestDocuments = getLatestRelevantDocumentsRequiringReevaluation({
+    documents: await loadCaseDocuments(context, caseData.id),
+    templateConfig,
+  });
 
   if (unresolvedLatestDocuments.length > 0) {
     throw new Error(
       "Wait for document extraction to finish, or retry any failed or stale extraction, before submitting this case for review.",
     );
   }
+
+  if (!caseData.needs_document_reevaluation) {
+    return;
+  }
+
+  await persistCaseDocumentReevaluationFlag(context, caseData.id, false, {
+    operationLabel: "Case submission",
+    fallbackMessage: "Unable to submit this case for review.",
+  });
+  caseData.needs_document_reevaluation = false;
 };
 
 const assertDocumentExtractionRetryAllowed = (document: DocumentRecord) => {
@@ -822,6 +864,20 @@ export const registerUploadedCaseDocument = async (
         versionNumber: registeredDocument.version_number,
       }),
     );
+
+    const templateConfig = await loadTemplateConfig(context, caseData.school_template_id);
+
+    if (
+      isDocumentTypeRelevantToSubmission({
+        documentType: registeredDocument.document_type,
+        templateConfig,
+      })
+    ) {
+      await persistCaseDocumentReevaluationFlag(context, input.caseId, true, {
+        operationLabel: "Document registration",
+        fallbackMessage: "Unable to update this case after the document upload.",
+      });
+    }
   }
 
   const extractionLifecycle = registeredDocument.created_new
@@ -876,8 +932,20 @@ export const finalizeCaseCreationAndEvaluate = async (
     extractedFields,
     templateConfig,
   });
+  const requiresDocumentReevaluation =
+    getLatestRelevantDocumentsRequiringReevaluation({
+      documents,
+      templateConfig,
+    }).length > 0;
 
   await persistRequirementEvaluation(context, input.caseId, nextStatus, evaluatedRequirements);
+
+  if (requiresDocumentReevaluation) {
+    await persistCaseDocumentReevaluationFlag(context, input.caseId, true, {
+      operationLabel: "Case finalization",
+      fallbackMessage: "Unable to finalize this case.",
+    });
+  }
 
   if (caseData.status !== nextStatus) {
     await writeStatusChangeHistoryBestEffort(context, {
@@ -914,8 +982,20 @@ export const reevaluateCaseAfterUploads = async (
     extractedFields,
     templateConfig,
   });
+  const requiresDocumentReevaluation =
+    getLatestRelevantDocumentsRequiringReevaluation({
+      documents,
+      templateConfig,
+    }).length > 0;
 
   await persistRequirementEvaluation(context, input.caseId, nextStatus, evaluatedRequirements);
+
+  if (requiresDocumentReevaluation) {
+    await persistCaseDocumentReevaluationFlag(context, input.caseId, true, {
+      operationLabel: "Case finalization",
+      fallbackMessage: "Unable to finalize this case.",
+    });
+  }
 
   if (caseData.status !== nextStatus) {
     await writeStatusChangeHistoryBestEffort(context, {
@@ -969,13 +1049,13 @@ export const submitCaseForReview = async (
 ) => {
   const caseData = await loadOwnedCase(context, input.caseId);
   const previousStatus = caseData.status;
+  const templateConfig = await loadTemplateConfig(context, caseData.school_template_id);
 
   assertCaseCanBeSubmittedForReview({
     status: previousStatus,
-    needsDocumentReevaluation: caseData.needs_document_reevaluation,
   });
 
-  await assertLatestDocumentExtractionsResolvedForSubmission(context, input.caseId);
+  await reconcileCaseDocumentReevaluationForSubmission(context, caseData, templateConfig);
 
   const nextStatus = assertValidCaseStatusTransition(previousStatus, "submitted");
 
