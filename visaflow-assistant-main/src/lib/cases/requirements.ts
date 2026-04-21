@@ -42,6 +42,13 @@ export interface RequirementSummary {
   readyForSubmission: boolean;
 }
 
+export interface EditableLatestExtractedField {
+  document: DocumentRecord;
+  extractedField: ExtractedFieldRecord | null;
+  fieldName: string;
+  label: string;
+}
+
 const DEFAULT_LEAD_TIME_WARNING_DAYS = 14;
 
 const CASE_FIELD_LABELS: Record<CaseFieldKey, string> = {
@@ -260,6 +267,30 @@ const compareDocumentVersions = (left: DocumentRecord, right: DocumentRecord) =>
   return left.id.localeCompare(right.id);
 };
 
+const compareExtractedFieldRecords = (left: ExtractedFieldRecord, right: ExtractedFieldRecord) => {
+  if (left.manually_corrected !== right.manually_corrected) {
+    return left.manually_corrected ? 1 : -1;
+  }
+
+  const createdAtComparison =
+    new Date(left.created_at).getTime() - new Date(right.created_at).getTime();
+  if (createdAtComparison !== 0) {
+    return createdAtComparison;
+  }
+
+  return left.id.localeCompare(right.id);
+};
+
+const pickLatestExtractedFieldRecord = (
+  extractedFields: ExtractedFieldRecord[],
+  documentId: string,
+  fieldName: string,
+) =>
+  extractedFields
+    .filter((field) => field.document_id === documentId && field.field_name === fieldName)
+    .sort(compareExtractedFieldRecords)
+    .at(-1) ?? null;
+
 export const getLatestDocumentsByType = (documents: DocumentRecord[]): DocumentRecord[] => {
   const latestDocuments = new Map<string, DocumentRecord>();
 
@@ -272,6 +303,62 @@ export const getLatestDocumentsByType = (documents: DocumentRecord[]): DocumentR
   }
 
   return Array.from(latestDocuments.values());
+};
+
+export const getLatestEditableExtractedFields = ({
+  documents,
+  extractedFields,
+  templateConfig,
+}: {
+  documents: DocumentRecord[];
+  extractedFields: ExtractedFieldRecord[];
+  templateConfig: unknown;
+}): EditableLatestExtractedField[] => {
+  const normalizedConfig = normalizeCaseTemplateConfig(templateConfig);
+  const latestDocumentsByType = new Map(
+    getLatestDocumentsByType(documents).map((document) => [document.document_type, document]),
+  );
+  const editableFields = new Map<string, EditableLatestExtractedField>();
+
+  for (const requirement of normalizedConfig.requirements ?? []) {
+    if (
+      requirement.type !== "extracted_field" ||
+      requirement.severity !== "blocker" ||
+      !requirement.extractedFieldName
+    ) {
+      continue;
+    }
+
+    const document = latestDocumentsByType.get(requirement.documentType ?? "offer_letter");
+    if (!document) {
+      continue;
+    }
+
+    const key = `${document.id}:${requirement.extractedFieldName}`;
+    if (editableFields.has(key)) {
+      continue;
+    }
+
+    editableFields.set(key, {
+      document,
+      extractedField: pickLatestExtractedFieldRecord(
+        extractedFields,
+        document.id,
+        requirement.extractedFieldName,
+      ),
+      fieldName: requirement.extractedFieldName,
+      label: requirement.label,
+    });
+  }
+
+  return Array.from(editableFields.values()).sort((left, right) => {
+    const documentComparison = compareDocumentVersions(left.document, right.document);
+    if (documentComparison !== 0) {
+      return documentComparison;
+    }
+
+    return left.label.localeCompare(right.label);
+  });
 };
 
 const getSubmissionBlockingDocumentTypeSet = (templateConfig: unknown) => {
@@ -375,12 +462,15 @@ const evaluateExtractedFieldRequirement = (
     .filter((document) => document.document_type === documentType)
     .map((document) => document.id);
 
-  const extractedValue = extractedFields.find(
-    (field) =>
-      matchingDocumentIds.includes(field.document_id) &&
-      field.field_name === requirement.extractedFieldName &&
-      isPresent(field.field_value),
-  );
+  const extractedValue = matchingDocumentIds
+    .map((documentId) =>
+      pickLatestExtractedFieldRecord(
+        extractedFields,
+        documentId,
+        requirement.extractedFieldName ?? "",
+      ),
+    )
+    .find((field) => field && isPresent(field.field_value));
 
   let status: RequirementInsert["status"] = "not_met";
   let explanation = `Add ${requirement.label.toLowerCase()} so this case can be reviewed.`;
@@ -389,9 +479,11 @@ const evaluateExtractedFieldRequirement = (
     explanation = `Upload the ${documentLabel} so ${requirement.label.toLowerCase()} can be tracked.`;
   } else if (extractedValue) {
     status = "met";
-    explanation = `${requirement.label} is available in the extracted-field placeholder data.`;
+    explanation = extractedValue.manually_corrected
+      ? `${requirement.label} is available after manual correction on the latest ${documentLabel}.`
+      : `${requirement.label} is available in the local extracted-field stub output for the latest ${documentLabel}.`;
   } else {
-    explanation = `${requirement.label} is still missing from the extracted-field placeholder data.`;
+    explanation = `${requirement.label} is still missing on the latest ${documentLabel}. Review and correct the extracted field before submission.`;
   }
 
   return {

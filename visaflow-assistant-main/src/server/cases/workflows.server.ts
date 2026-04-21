@@ -1,11 +1,13 @@
 ﻿import {
   deriveCaseStatusFromRequirements,
   evaluateCaseRequirements,
+  getLatestEditableExtractedFields,
   getLatestDocumentsBlockingSubmission,
   isDocumentTypeRelevantToSubmission,
 } from "../../lib/cases/requirements.ts";
 import {
   STALE_DOCUMENT_EXTRACTION_THRESHOLD_MINUTES,
+  canManuallyReviewDocumentExtraction,
   canRetryDocumentExtraction,
   hasUnresolvedDocumentExtraction,
 } from "../../lib/cases/document-extraction-state.ts";
@@ -17,12 +19,14 @@ import { getDocumentTypeLabel } from "../../lib/constants.ts";
 import { extractDocumentWithLocalStub } from "./document-extraction.ts";
 import { findOwnedCase, findOwnedCaseNote, loadOwnedCase } from "./authz.server.ts";
 import {
+  writeCaseAuditLog,
   writeCaseTimelineEventBestEffort,
   writeStatusChangeHistoryBestEffort,
 } from "./history.server.ts";
 import { normalizeCaseWorkflowDatabaseError } from "./database-errors.ts";
 import { registerCaseDocumentRecord } from "./document-registration.ts";
 import type {
+  AuditLogInsert,
   CaseInsert,
   CaseRecord,
   CaseStatus,
@@ -44,11 +48,13 @@ import type {
   ReevaluateCaseAfterUploadsInput,
   RetryCaseDocumentExtractionInput,
   RequestCaseChangesInput,
+  SaveManualExtractedFieldsInput,
   SaveCaseDraftInput,
   SubmitCaseForReviewInput,
 } from "./validation.ts";
 
 const FINALIZE_CASE_REQUIREMENT_EVALUATION_RPC = "finalize_case_requirement_evaluation";
+const APPLY_MANUAL_EXTRACTED_FIELD_REVIEW_RPC = "apply_manual_extracted_field_review";
 const REVIEWER_CASE_DECISION_RPC = "apply_reviewer_case_decision";
 type ReviewerDecisionStatus = Extract<CaseStatus, "approved" | "denied" | "change_pending">;
 
@@ -64,6 +70,20 @@ interface DocumentExtractionLifecycleResult {
   extractionStatus: DocumentExtractionStatus;
   reevaluationRequirementCount: number | null;
   reevaluationStatus: CaseStatus | null;
+}
+
+interface PlannedManualExtractedFieldChange {
+  document: DocumentRecord;
+  extractedFieldId: string | null;
+  fieldName: string;
+  nextValue: string | null;
+  previousValue: string | null;
+}
+
+interface ReevaluationPersistenceResult {
+  evaluatedRequirements: RequirementInsert[];
+  nextStatus: CaseStatus;
+  requiresDocumentReevaluation: boolean;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -345,6 +365,15 @@ const replaceDocumentExtractedFields = async (
   }
 };
 
+const normalizeManualExtractedFieldValue = (value: string | null) => {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+};
+
 const downloadCaseDocumentBuffer = async (
   context: CaseWorkflowContext,
   document: Pick<DocumentRecord, "file_path">,
@@ -402,6 +431,66 @@ const buildDocumentExtractionTimelineEvent = ({
   };
 };
 
+const buildManualExtractedFieldReviewTimelineEvent = ({
+  caseId,
+  documentTypes,
+  updatedFieldCount,
+}: {
+  caseId: string;
+  documentTypes: string[];
+  updatedFieldCount: number;
+}): TimelineEventInsert => {
+  const documentLabels = Array.from(
+    new Set(documentTypes.map((documentType) => getDocumentTypeLabel(documentType))),
+  );
+  const documentSummary =
+    documentLabels.length === 1
+      ? `the latest ${documentLabels[0]}`
+      : `the latest ${documentLabels.join(", ")}`;
+
+  return {
+    case_id: caseId,
+    event_type: "extracted_fields_reviewed",
+    title: "Extracted fields reviewed",
+    description: `Saved ${updatedFieldCount} manual extracted-field correction${updatedFieldCount === 1 ? "" : "s"} for ${documentSummary}.`,
+  };
+};
+
+const buildManualExtractedFieldAuditEntry = ({
+  caseId,
+  documentType,
+  fieldName,
+  nextValue,
+  previousValue,
+  userId,
+}: {
+  caseId: string;
+  documentType: string;
+  fieldName: string;
+  nextValue: string | null;
+  previousValue: string | null;
+  userId: string;
+}): AuditLogInsert => ({
+  action_type: "extracted_field_reviewed",
+  actor_id: userId,
+  case_id: caseId,
+  field_name: `${documentType}.${fieldName}`,
+  new_value: nextValue,
+  old_value: previousValue,
+  reason: "Student reviewed and saved the latest extracted document field value.",
+});
+
+const writeCaseAuditLogBestEffort = async (context: CaseWorkflowContext, entry: AuditLogInsert) => {
+  try {
+    await writeCaseAuditLog(context, entry);
+  } catch (error) {
+    console.error(
+      `[case-history] audit log ${entry.action_type} for case ${entry.case_id} failed`,
+      error,
+    );
+  }
+};
+
 const updateExistingCaseNote = async (
   context: CaseWorkflowContext,
   caseId: string,
@@ -420,33 +509,65 @@ const updateExistingCaseNote = async (
   }
 };
 
+const buildRequirementPayload = (requirements: RequirementInsert[]) =>
+  requirements.map(({ requirement_key, label, severity, status, explanation, source }) => ({
+    requirement_key,
+    label,
+    severity,
+    status,
+    explanation,
+    source,
+  }));
+
 const persistRequirementEvaluation = async (
   context: CaseWorkflowContext,
   caseId: string,
   nextStatus: ReturnType<typeof deriveCaseStatusFromRequirements>,
   requirements: RequirementInsert[],
 ) => {
-  const requirementPayload = requirements.map(
-    ({ requirement_key, label, severity, status, explanation, source }) => ({
-      requirement_key,
-      label,
-      severity,
-      status,
-      explanation,
-      source,
-    }),
-  );
-
   const { error } = await context.supabase.rpc(FINALIZE_CASE_REQUIREMENT_EVALUATION_RPC, {
     p_case_id: caseId,
     p_next_status: nextStatus,
-    p_requirements: requirementPayload,
+    p_requirements: buildRequirementPayload(requirements),
   });
 
   if (error) {
     throw normalizeCaseWorkflowDatabaseError(error, {
       operationLabel: "Case finalization",
       fallbackMessage: "Unable to finalize this case.",
+    });
+  }
+};
+
+const persistManualExtractedFieldReview = async (
+  context: CaseWorkflowContext,
+  options: {
+    caseId: string;
+    changedFields: PlannedManualExtractedFieldChange[];
+    needsDocumentReevaluation: boolean;
+    nextStatus: CaseStatus;
+    requirements: RequirementInsert[];
+    reviewedAt: string;
+  },
+) => {
+  const { error } = await context.supabase.rpc(APPLY_MANUAL_EXTRACTED_FIELD_REVIEW_RPC, {
+    p_case_id: options.caseId,
+    p_field_changes: options.changedFields.map((field) => ({
+      document_id: field.document.id,
+      existing_field_id: field.extractedFieldId,
+      field_name: field.fieldName,
+      field_value: field.nextValue,
+    })),
+    p_needs_document_reevaluation: options.needsDocumentReevaluation,
+    p_next_status: options.nextStatus,
+    p_requirements: buildRequirementPayload(options.requirements),
+    p_reviewed_at: options.reviewedAt,
+  });
+
+  if (error) {
+    throw normalizeCaseWorkflowDatabaseError(error, {
+      operationLabel: "Extracted field review",
+      fallbackMessage: "Unable to save the reviewed extracted fields.",
     });
   }
 };
@@ -514,6 +635,58 @@ const reconcileCaseDocumentReevaluationForSubmission = async (
     fallbackMessage: "Unable to submit this case for review.",
   });
   caseData.needs_document_reevaluation = false;
+};
+
+const buildCaseReevaluationResult = ({
+  caseData,
+  templateConfig,
+  documents,
+  extractedFields,
+}: {
+  caseData: CaseRecord;
+  templateConfig: unknown;
+  documents: DocumentRecord[];
+  extractedFields: ExtractedFieldRecord[];
+}): ReevaluationPersistenceResult => {
+  const { evaluatedRequirements, nextStatus } = runDeterministicCaseEvaluation({
+    caseData,
+    documents,
+    extractedFields,
+    templateConfig,
+  });
+
+  return {
+    evaluatedRequirements,
+    nextStatus,
+    requiresDocumentReevaluation:
+      getLatestRelevantDocumentsRequiringReevaluation({
+        documents,
+        templateConfig,
+      }).length > 0,
+  };
+};
+
+const writeReevaluationHistoryBestEffort = async (
+  context: CaseWorkflowContext,
+  options: {
+    caseId: string;
+    previousStatus: CaseStatus;
+    nextStatus: CaseStatus;
+  },
+) => {
+  if (options.previousStatus !== options.nextStatus) {
+    await writeStatusChangeHistoryBestEffort(context, {
+      caseId: options.caseId,
+      previousStatus: options.previousStatus,
+      nextStatus: options.nextStatus,
+      description: "Requirements re-evaluated after document uploads.",
+      reason:
+        "Deterministic CPT requirement evaluation re-ran after new or updated documents were uploaded.",
+    });
+    return;
+  }
+
+  await logSameStatusEvaluation(context, options.caseId, options.nextStatus);
 };
 
 const assertDocumentExtractionRetryAllowed = (document: DocumentRecord) => {
@@ -976,17 +1149,13 @@ export const reevaluateCaseAfterUploads = async (
     throw new Error("This case cannot be re-evaluated from its current status.");
   }
 
-  const { evaluatedRequirements, nextStatus } = runDeterministicCaseEvaluation({
-    caseData,
-    documents,
-    extractedFields,
-    templateConfig,
-  });
-  const requiresDocumentReevaluation =
-    getLatestRelevantDocumentsRequiringReevaluation({
+  const { evaluatedRequirements, nextStatus, requiresDocumentReevaluation } =
+    buildCaseReevaluationResult({
+      caseData,
       documents,
+      extractedFields,
       templateConfig,
-    }).length > 0;
+    });
 
   await persistRequirementEvaluation(context, input.caseId, nextStatus, evaluatedRequirements);
 
@@ -997,18 +1166,11 @@ export const reevaluateCaseAfterUploads = async (
     });
   }
 
-  if (caseData.status !== nextStatus) {
-    await writeStatusChangeHistoryBestEffort(context, {
-      caseId: input.caseId,
-      previousStatus: caseData.status,
-      nextStatus,
-      description: "Requirements re-evaluated after document uploads.",
-      reason:
-        "Deterministic CPT requirement evaluation re-ran after new or updated documents were uploaded.",
-    });
-  } else {
-    await logSameStatusEvaluation(context, input.caseId, nextStatus);
-  }
+  await writeReevaluationHistoryBestEffort(context, {
+    caseId: input.caseId,
+    nextStatus,
+    previousStatus: caseData.status,
+  });
 
   return {
     caseId: input.caseId,
@@ -1040,6 +1202,182 @@ export const retryCaseDocumentExtraction = async (
     reevaluationRequirementCount: extractionLifecycle.reevaluationRequirementCount,
     reevaluationStatus: extractionLifecycle.reevaluationStatus,
     versionNumber: document.version_number,
+  };
+};
+
+export const saveManualExtractedFields = async (
+  context: CaseWorkflowContext,
+  input: SaveManualExtractedFieldsInput,
+) => {
+  const { caseData, templateConfig, documents, extractedFields } = await loadCaseEvaluationState(
+    context,
+    input.caseId,
+  );
+
+  if (!canRerunDeterministicEvaluation(caseData.status)) {
+    throw new Error("This case cannot be re-evaluated from its current status.");
+  }
+
+  const editableFields = getLatestEditableExtractedFields({
+    documents,
+    extractedFields,
+    templateConfig,
+  });
+
+  if (editableFields.length === 0) {
+    throw new Error(
+      "No blocker-level extracted fields are available to review on the latest relevant document versions.",
+    );
+  }
+
+  const editableFieldsByKey = new Map(
+    editableFields.map((field) => [`${field.document.id}:${field.fieldName}`, field]),
+  );
+  const reviewedAt = new Date().toISOString();
+  const changedFields: PlannedManualExtractedFieldChange[] = [];
+  const projectedDocuments = documents.map((document) => ({ ...document }));
+  const projectedDocumentsById = new Map(
+    projectedDocuments.map((document) => [document.id, document]),
+  );
+  const projectedExtractedFields = extractedFields.map((field) => ({ ...field }));
+  let plannedInsertedFieldCount = 0;
+
+  for (const field of input.fields) {
+    const editableField = editableFieldsByKey.get(`${field.documentId}:${field.fieldName}`);
+    if (!editableField) {
+      throw new Error(
+        "Only blocker-level extracted fields from the latest relevant document versions can be edited.",
+      );
+    }
+
+    if (!canManuallyReviewDocumentExtraction(editableField.document)) {
+      throw new Error(
+        `Wait for ${getDocumentTypeLabel(editableField.document.document_type)} extraction to finish before editing its extracted fields.`,
+      );
+    }
+
+    const previousValue = normalizeManualExtractedFieldValue(
+      editableField.extractedField?.field_value ?? null,
+    );
+    const nextValue = normalizeManualExtractedFieldValue(field.fieldValue);
+
+    if (previousValue === nextValue) {
+      continue;
+    }
+
+    const projectedDocument = projectedDocumentsById.get(editableField.document.id);
+    if (!projectedDocument) {
+      throw new Error("Document not found or you do not have access.");
+    }
+
+    if (editableField.extractedField) {
+      const projectedField = projectedExtractedFields.find(
+        (candidate) =>
+          candidate.id === editableField.extractedField?.id &&
+          candidate.document_id === editableField.document.id,
+      );
+
+      if (!projectedField) {
+        throw new Error("Unable to save the reviewed extracted field.");
+      }
+
+      Object.assign(projectedField, {
+        confidence_score: null,
+        field_value: nextValue,
+        manually_corrected: true,
+      });
+    } else if (nextValue !== null) {
+      plannedInsertedFieldCount += 1;
+      projectedExtractedFields.push({
+        confidence_score: null,
+        created_at: reviewedAt,
+        document_id: editableField.document.id,
+        field_name: editableField.fieldName,
+        field_value: nextValue,
+        id: `planned-manual-field-${plannedInsertedFieldCount}`,
+        manually_corrected: true,
+      });
+    } else {
+      continue;
+    }
+
+    if (
+      hasUnresolvedDocumentExtraction(projectedDocument.extraction_status) ||
+      projectedDocument.extraction_error !== null
+    ) {
+      Object.assign(projectedDocument, {
+        extraction_completed_at: reviewedAt,
+        extraction_error: null,
+        extraction_started_at: projectedDocument.extraction_started_at ?? reviewedAt,
+        extraction_status: "succeeded",
+      });
+    }
+
+    changedFields.push({
+      document: editableField.document,
+      extractedFieldId: editableField.extractedField?.id ?? null,
+      fieldName: editableField.fieldName,
+      nextValue,
+      previousValue,
+    });
+  }
+
+  if (changedFields.length === 0) {
+    throw new Error("No extracted field changes were detected.");
+  }
+
+  const reevaluationResult = buildCaseReevaluationResult({
+    caseData,
+    documents: projectedDocuments,
+    extractedFields: projectedExtractedFields,
+    templateConfig,
+  });
+
+  await persistManualExtractedFieldReview(context, {
+    caseId: input.caseId,
+    changedFields,
+    needsDocumentReevaluation: reevaluationResult.requiresDocumentReevaluation,
+    nextStatus: reevaluationResult.nextStatus,
+    requirements: reevaluationResult.evaluatedRequirements,
+    reviewedAt,
+  });
+
+  await Promise.all(
+    changedFields.map((field) =>
+      writeCaseAuditLogBestEffort(
+        context,
+        buildManualExtractedFieldAuditEntry({
+          caseId: caseData.id,
+          documentType: field.document.document_type,
+          fieldName: field.fieldName,
+          nextValue: field.nextValue,
+          previousValue: field.previousValue,
+          userId: context.userId,
+        }),
+      ),
+    ),
+  );
+
+  await writeCaseTimelineEventBestEffort(
+    context,
+    buildManualExtractedFieldReviewTimelineEvent({
+      caseId: caseData.id,
+      documentTypes: changedFields.map((field) => field.document.document_type),
+      updatedFieldCount: changedFields.length,
+    }),
+  );
+
+  await writeReevaluationHistoryBestEffort(context, {
+    caseId: input.caseId,
+    nextStatus: reevaluationResult.nextStatus,
+    previousStatus: caseData.status,
+  });
+
+  return {
+    caseId: input.caseId,
+    requirementCount: reevaluationResult.evaluatedRequirements.length,
+    status: reevaluationResult.nextStatus,
+    updatedFieldCount: changedFields.length,
   };
 };
 

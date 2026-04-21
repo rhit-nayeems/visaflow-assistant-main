@@ -47,3 +47,8 @@ export const canRetryDocumentExtraction = (
 
   return isStaleDocumentExtractionProcessing(document.extraction_started_at, now);
 };
+
+export const canManuallyReviewDocumentExtraction = (
+  document: Pick<DocumentRecord, "extraction_started_at" | "extraction_status">,
+  now = Date.now(),
+) => document.extraction_status !== "processing" || canRetryDocumentExtraction(document, now);

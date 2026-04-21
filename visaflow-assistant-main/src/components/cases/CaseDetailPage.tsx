@@ -20,11 +20,13 @@ import { useAuth } from "@/lib/auth";
 import {
   hasUnresolvedDocumentExtraction,
   STALE_DOCUMENT_EXTRACTION_THRESHOLD_MINUTES,
+  canManuallyReviewDocumentExtraction,
   canRetryDocumentExtraction,
 } from "@/lib/cases/document-extraction-state";
 import { canRerunDeterministicEvaluation } from "@/lib/cases/status";
 import {
   getCaseNextRecommendedAction,
+  getLatestEditableExtractedFields,
   getLatestDocumentsBlockingSubmission,
   getLatestDocumentsByType,
   summarizeRequirementRows,
@@ -43,11 +45,13 @@ import {
   registerUploadedCaseDocumentAction,
   reevaluateCaseAfterUploadsAction,
   retryCaseDocumentExtractionAction,
+  saveManualExtractedFieldsAction,
   submitCaseForReviewAction,
 } from "@/server/cases/actions";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -56,6 +60,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { SeverityBadge } from "@/components/shared/SeverityBadge";
 import { AlertBanner } from "@/components/shared/AlertBanner";
@@ -64,6 +69,7 @@ import { TimelineItem } from "@/components/shared/TimelineItem";
 
 type Case = Tables<"cases">;
 type Document = Tables<"documents">;
+type ExtractedField = Tables<"extracted_fields">;
 type Requirement = Tables<"case_requirements">;
 type TimelineEvent = Tables<"case_timeline_events">;
 type AuditLog = Tables<"audit_logs">;
@@ -80,6 +86,19 @@ const MAX_DOCUMENT_FILE_SIZE_MB = Math.round(MAX_FILE_SIZE / (1024 * 1024));
 const formatCaseStatusLabel = (status: string) => status.replace(/_/g, " ");
 const formatExtractionStatusLabel = (status: Document["extraction_status"]) =>
   status.replace(/_/g, " ");
+const buildEditableExtractedFieldKey = (documentId: string, fieldName: string) =>
+  `${documentId}:${fieldName}`;
+const normalizeExtractedFieldDraftValue = (value: string | null | undefined) => {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+};
+const isDateLikeExtractedField = (fieldName: string) => fieldName.includes("date");
+const isMultilineExtractedField = (fieldName: string, value: string) =>
+  fieldName === "job_duties" || value.length > 80;
 
 const getExtractionStatusBadgeClassName = (status: Document["extraction_status"]) => {
   switch (status) {
@@ -98,6 +117,7 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
   const { user, session } = useAuth();
   const [caseData, setCaseData] = useState<Case | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
+  const [extractedFields, setExtractedFields] = useState<ExtractedField[]>([]);
   const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
@@ -122,11 +142,18 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
   const [submitError, setSubmitError] = useState("");
   const [submitNotice, setSubmitNotice] = useState("");
   const [retryExtractionDocumentId, setRetryExtractionDocumentId] = useState<string | null>(null);
+  const [manualExtractedFieldDrafts, setManualExtractedFieldDrafts] = useState<
+    Record<string, string>
+  >({});
+  const [manualExtractedFieldLoading, setManualExtractedFieldLoading] = useState(false);
+  const [manualExtractedFieldError, setManualExtractedFieldError] = useState("");
+  const [manualExtractedFieldNotice, setManualExtractedFieldNotice] = useState("");
 
   const addCaseNoteMutation = useServerFn(addCaseNoteAction);
   const registerUploadedCaseDocumentMutation = useServerFn(registerUploadedCaseDocumentAction);
   const reevaluateCaseAfterUploadsMutation = useServerFn(reevaluateCaseAfterUploadsAction);
   const retryCaseDocumentExtractionMutation = useServerFn(retryCaseDocumentExtractionAction);
+  const saveManualExtractedFieldsMutation = useServerFn(saveManualExtractedFieldsAction);
   const submitCaseForReviewMutation = useServerFn(submitCaseForReviewAction);
 
   const load = useCallback(async () => {
@@ -154,6 +181,16 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
         .eq("case_id", caseId)
         .order("created_at", { ascending: false }),
     ]);
+    const extractedFieldsRes =
+      (docsRes.data?.length ?? 0) > 0
+        ? await supabase
+            .from("extracted_fields")
+            .select("*")
+            .in(
+              "document_id",
+              (docsRes.data ?? []).map((document) => document.id),
+            )
+        : { data: [] as ExtractedField[] };
     const caseRecord = caseRes.data;
     const templateRes = caseRecord?.school_template_id
       ? await supabase
@@ -165,6 +202,7 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
 
     setCaseData(caseRecord);
     setDocuments(docsRes.data || []);
+    setExtractedFields(extractedFieldsRes.data || []);
     setRequirements(reqsRes.data || []);
     setTimeline(tlRes.data || []);
     setAuditLogs(auditRes.data || []);
@@ -176,6 +214,21 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    const nextDrafts = Object.fromEntries(
+      getLatestEditableExtractedFields({
+        documents,
+        extractedFields,
+        templateConfig,
+      }).map((field) => [
+        buildEditableExtractedFieldKey(field.document.id, field.fieldName),
+        field.extractedField?.field_value ?? "",
+      ]),
+    );
+
+    setManualExtractedFieldDrafts(nextDrafts);
+  }, [documents, extractedFields, templateConfig]);
 
   const getServerFnHeaders = () => buildSupabaseServerFnHeaders(session);
 
@@ -224,6 +277,8 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
     setUploadLoading(true);
     setUploadError("");
     setUploadNotice("");
+    setManualExtractedFieldError("");
+    setManualExtractedFieldNotice("");
     setReevaluateError("");
     setReevaluateNotice("");
     setSubmitError("");
@@ -291,6 +346,8 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
     setReevaluateLoading(true);
     setReevaluateError("");
     setReevaluateNotice("");
+    setManualExtractedFieldError("");
+    setManualExtractedFieldNotice("");
     setSubmitError("");
     setSubmitNotice("");
 
@@ -320,6 +377,8 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
     setRetryExtractionDocumentId(document.id);
     setUploadError("");
     setUploadNotice("");
+    setManualExtractedFieldError("");
+    setManualExtractedFieldNotice("");
     setReevaluateError("");
     setReevaluateNotice("");
     setSubmitError("");
@@ -352,10 +411,80 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
     }
   };
 
+  const handleSaveManualExtractedFields = async () => {
+    if (!caseData) {
+      return;
+    }
+
+    const editableFields = getLatestEditableExtractedFields({
+      documents,
+      extractedFields,
+      templateConfig,
+    });
+    const changedFields = editableFields
+      .filter((field) => {
+        const fieldKey = buildEditableExtractedFieldKey(field.document.id, field.fieldName);
+
+        return (
+          normalizeExtractedFieldDraftValue(manualExtractedFieldDrafts[fieldKey]) !==
+          normalizeExtractedFieldDraftValue(field.extractedField?.field_value ?? null)
+        );
+      })
+      .filter((field) => canManuallyReviewDocumentExtraction(field.document));
+
+    if (changedFields.length === 0) {
+      setManualExtractedFieldError("Update at least one extracted field before saving.");
+      return;
+    }
+
+    setManualExtractedFieldLoading(true);
+    setManualExtractedFieldError("");
+    setManualExtractedFieldNotice("");
+    setUploadError("");
+    setUploadNotice("");
+    setReevaluateError("");
+    setReevaluateNotice("");
+    setSubmitError("");
+    setSubmitNotice("");
+
+    try {
+      const previousStatus = caseData.status;
+      const result = await saveManualExtractedFieldsMutation({
+        data: {
+          caseId,
+          fields: changedFields.map((field) => ({
+            documentId: field.document.id,
+            fieldName: field.fieldName,
+            fieldValue:
+              manualExtractedFieldDrafts[
+                buildEditableExtractedFieldKey(field.document.id, field.fieldName)
+              ] ?? "",
+          })),
+        },
+        headers: getServerFnHeaders(),
+      });
+
+      setManualExtractedFieldNotice(
+        result.status === previousStatus
+          ? `Reviewed extracted fields saved. Status remains ${formatCaseStatusLabel(result.status)}.`
+          : `Reviewed extracted fields saved. Case status updated to ${formatCaseStatusLabel(result.status)}.`,
+      );
+      await load();
+    } catch (error) {
+      setManualExtractedFieldError(
+        error instanceof Error ? error.message : "Unable to save the reviewed extracted fields.",
+      );
+    } finally {
+      setManualExtractedFieldLoading(false);
+    }
+  };
+
   const prepareReupload = (documentType: string) => {
     setSelectedDocumentType(documentType);
     setUploadError("");
     setUploadNotice("");
+    setManualExtractedFieldError("");
+    setManualExtractedFieldNotice("");
     setReevaluateError("");
     setReevaluateNotice("");
     setSubmitError("");
@@ -371,6 +500,8 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
     setSubmitLoading(true);
     setSubmitError("");
     setSubmitNotice("");
+    setManualExtractedFieldError("");
+    setManualExtractedFieldNotice("");
 
     try {
       const previousStatus = caseData.status;
@@ -430,6 +561,46 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
     (document) => hasUnresolvedDocumentExtraction(document.extraction_status),
   );
   const latestDocumentIds = new Set(latestDocuments.map((document) => document.id));
+  const latestEditableExtractedFields = getLatestEditableExtractedFields({
+    documents,
+    extractedFields,
+    templateConfig,
+  });
+  const editableExtractedFieldGroups: Array<{
+    document: Document;
+    fields: Array<(typeof latestEditableExtractedFields)[number]>;
+  }> = [];
+  const editableExtractedFieldGroupsById = new Map<
+    string,
+    (typeof editableExtractedFieldGroups)[number]
+  >();
+
+  for (const field of latestEditableExtractedFields) {
+    const existingGroup = editableExtractedFieldGroupsById.get(field.document.id);
+
+    if (existingGroup) {
+      existingGroup.fields.push(field);
+      continue;
+    }
+
+    const nextGroup = {
+      document: field.document,
+      fields: [field],
+    };
+
+    editableExtractedFieldGroupsById.set(field.document.id, nextGroup);
+    editableExtractedFieldGroups.push(nextGroup);
+  }
+
+  const dirtyEditableExtractedFields = latestEditableExtractedFields.filter((field) => {
+    const fieldKey = buildEditableExtractedFieldKey(field.document.id, field.fieldName);
+
+    return (
+      normalizeExtractedFieldDraftValue(manualExtractedFieldDrafts[fieldKey]) !==
+      normalizeExtractedFieldDraftValue(field.extractedField?.field_value ?? null)
+    );
+  });
+  const hasManualExtractedFieldChanges = dirtyEditableExtractedFields.length > 0;
   const latestRetryableExtractions = latestRelevantDocumentsRequiringReevaluation.filter(
     (document) => canRetryDocumentExtraction(document),
   );
@@ -526,6 +697,7 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
             disabled={
               uploadLoading ||
               reevaluateLoading ||
+              manualExtractedFieldLoading ||
               submitLoading ||
               retryExtractionDocumentId !== null ||
               !canSubmitForReview
@@ -540,6 +712,7 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
             onClick={handleReevaluate}
             disabled={
               reevaluateLoading ||
+              manualExtractedFieldLoading ||
               submitLoading ||
               retryExtractionDocumentId !== null ||
               !canRerunEvaluation
@@ -637,7 +810,7 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
               variant="outline"
               size="sm"
               onClick={handleReevaluate}
-              disabled={reevaluateLoading}
+              disabled={reevaluateLoading || manualExtractedFieldLoading}
             >
               {reevaluateLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               Re-run now
@@ -666,13 +839,27 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
                 variant="outline"
                 size="sm"
                 onClick={handleReevaluate}
-                disabled={reevaluateLoading}
+                disabled={reevaluateLoading || manualExtractedFieldLoading}
               >
                 {reevaluateLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                 Re-run now
               </Button>
             ) : undefined
           }
+        />
+      )}
+      {manualExtractedFieldError && (
+        <AlertBanner
+          variant="error"
+          title="Extracted fields not saved"
+          description={manualExtractedFieldError}
+        />
+      )}
+      {manualExtractedFieldNotice && (
+        <AlertBanner
+          variant="success"
+          title="Extracted fields saved"
+          description={manualExtractedFieldNotice}
         />
       )}
       {reevaluateError && (
@@ -846,6 +1033,7 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
                   onClick={handleReevaluate}
                   disabled={
                     reevaluateLoading ||
+                    manualExtractedFieldLoading ||
                     submitLoading ||
                     retryExtractionDocumentId !== null ||
                     !canRerunEvaluation
@@ -949,7 +1137,10 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
                       >
                         Clear
                       </Button>
-                      <Button onClick={handleUpload} disabled={uploadLoading}>
+                      <Button
+                        onClick={handleUpload}
+                        disabled={uploadLoading || manualExtractedFieldLoading}
+                      >
                         {uploadLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                         {selectedTypeLatestVersion > 0 ? "Upload new version" : "Upload document"}
                       </Button>
@@ -958,6 +1149,166 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
                 )}
               </CardContent>
             </Card>
+
+            {editableExtractedFieldGroups.length > 0 && (
+              <Card className="shadow-card">
+                <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <CardTitle className="text-sm">Review extracted fields</CardTitle>
+                    <CardDescription>
+                      Edit only the blocker-level extracted fields tied to the latest relevant
+                      document versions. Superseded versions stay read-only and do not drive
+                      submission.
+                    </CardDescription>
+                  </div>
+                  <Button
+                    onClick={handleSaveManualExtractedFields}
+                    disabled={
+                      !hasManualExtractedFieldChanges ||
+                      manualExtractedFieldLoading ||
+                      uploadLoading ||
+                      reevaluateLoading ||
+                      submitLoading ||
+                      retryExtractionDocumentId !== null
+                    }
+                  >
+                    {manualExtractedFieldLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : null}
+                    Save extracted field review
+                  </Button>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {editableExtractedFieldGroups.map((group) => {
+                    const canReviewDocument = canManuallyReviewDocumentExtraction(group.document);
+
+                    const documentReviewDescription =
+                      group.document.extraction_status === "failed"
+                        ? "Local extraction failed on this latest version. Add or correct the required values manually to keep the case moving."
+                        : group.document.extraction_status === "pending"
+                          ? "This latest version is still marked pending from a prior interrupted run. Saving reviewed values resolves the extraction gate for this document."
+                          : group.document.extraction_status === "processing" && canReviewDocument
+                            ? "This latest version appears stalled in processing. You can save reviewed values manually instead of waiting on the local stub."
+                            : group.document.extraction_status === "processing"
+                              ? "Extraction is still running for this latest version. Wait for it to finish before editing these fields."
+                              : "Review the local stub output and correct anything incomplete or incorrect.";
+
+                    return (
+                      <div
+                        key={group.document.id}
+                        className="space-y-4 rounded-lg border bg-muted/20 p-4"
+                      >
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+                            <p className="text-sm font-medium text-foreground">
+                              {getDocumentTypeLabel(group.document.document_type)} - v
+                              {group.document.version_number}
+                            </p>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {documentReviewDescription}
+                            </p>
+                          </div>
+                          <span
+                            className={`inline-flex w-fit rounded-full px-2 py-0.5 text-xs font-medium ${getExtractionStatusBadgeClassName(group.document.extraction_status)}`}
+                          >
+                            {formatExtractionStatusLabel(group.document.extraction_status)}
+                          </span>
+                        </div>
+
+                        <div className="space-y-4">
+                          {group.fields.map((field) => {
+                            const fieldKey = buildEditableExtractedFieldKey(
+                              group.document.id,
+                              field.fieldName,
+                            );
+                            const currentValue =
+                              manualExtractedFieldDrafts[fieldKey] ??
+                              field.extractedField?.field_value ??
+                              "";
+                            const isManualValue = field.extractedField?.manually_corrected ?? false;
+                            const sourceLabel = isManualValue
+                              ? "Manual correction"
+                              : field.extractedField
+                                ? "Local extraction"
+                                : "Missing";
+                            const sourceClassName = isManualValue
+                              ? "bg-primary/10 text-primary"
+                              : field.extractedField
+                                ? "bg-success/10 text-success"
+                                : "bg-muted text-muted-foreground";
+                            const helperText = isManualValue
+                              ? "This saved value came from manual review on the latest version."
+                              : field.extractedField
+                                ? "This value came from the local extraction stub. Edit it if it is incomplete or incorrect."
+                                : "No value is saved for this latest version yet. Add it manually if the document contains it.";
+                            const disabled =
+                              !canReviewDocument ||
+                              manualExtractedFieldLoading ||
+                              uploadLoading ||
+                              reevaluateLoading ||
+                              submitLoading ||
+                              retryExtractionDocumentId !== null;
+
+                            return (
+                              <div key={fieldKey} className="space-y-2">
+                                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                  <Label htmlFor={fieldKey} className="text-sm font-medium">
+                                    {field.label}
+                                  </Label>
+                                  <span
+                                    className={`inline-flex w-fit rounded-full px-2 py-0.5 text-xs font-medium ${sourceClassName}`}
+                                  >
+                                    {sourceLabel}
+                                  </span>
+                                </div>
+
+                                {isMultilineExtractedField(field.fieldName, currentValue) ? (
+                                  <Textarea
+                                    id={fieldKey}
+                                    value={currentValue}
+                                    disabled={disabled}
+                                    onChange={(event) => {
+                                      setManualExtractedFieldDrafts((currentDrafts) => ({
+                                        ...currentDrafts,
+                                        [fieldKey]: event.target.value,
+                                      }));
+                                      setManualExtractedFieldError("");
+                                      setManualExtractedFieldNotice("");
+                                    }}
+                                  />
+                                ) : (
+                                  <Input
+                                    id={fieldKey}
+                                    type={
+                                      isDateLikeExtractedField(field.fieldName) &&
+                                      /^\d{4}-\d{2}-\d{2}$/.test(currentValue)
+                                        ? "date"
+                                        : "text"
+                                    }
+                                    value={currentValue}
+                                    disabled={disabled}
+                                    onChange={(event) => {
+                                      setManualExtractedFieldDrafts((currentDrafts) => ({
+                                        ...currentDrafts,
+                                        [fieldKey]: event.target.value,
+                                      }));
+                                      setManualExtractedFieldError("");
+                                      setManualExtractedFieldNotice("");
+                                    }}
+                                  />
+                                )}
+
+                                <p className="text-xs text-muted-foreground">{helperText}</p>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </CardContent>
+              </Card>
+            )}
 
             {documents.length === 0 ? (
               <EmptyState
@@ -1013,6 +1364,7 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
                             disabled={
                               retryExtractionDocumentId === document.id ||
                               uploadLoading ||
+                              manualExtractedFieldLoading ||
                               reevaluateLoading ||
                               submitLoading
                             }
@@ -1027,7 +1379,9 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
                         variant="outline"
                         size="sm"
                         onClick={() => prepareReupload(document.document_type)}
-                        disabled={retryExtractionDocumentId === document.id}
+                        disabled={
+                          retryExtractionDocumentId === document.id || manualExtractedFieldLoading
+                        }
                       >
                         Re-upload
                       </Button>

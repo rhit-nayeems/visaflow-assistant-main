@@ -10,6 +10,7 @@ import {
   retryCaseDocumentExtraction,
   requestCaseChanges,
   runDeterministicCaseEvaluation,
+  saveManualExtractedFields,
   submitCaseForReview,
 } from "./workflows.server.ts";
 import type {
@@ -22,6 +23,7 @@ import type {
 } from "./types";
 
 const FINALIZE_CASE_REQUIREMENT_EVALUATION_RPC = "finalize_case_requirement_evaluation";
+const APPLY_MANUAL_EXTRACTED_FIELD_REVIEW_RPC = "apply_manual_extracted_field_review";
 const REGISTER_CASE_DOCUMENT_RPC = "register_case_document";
 const REVIEWER_CASE_DECISION_RPC = "apply_reviewer_case_decision";
 
@@ -71,14 +73,15 @@ const buildExtractedFieldRecord = (
   documentId: string,
   fieldName: string,
   fieldValue: string,
+  overrides: Partial<ExtractedFieldRecord> = {},
 ): ExtractedFieldRecord => ({
-  id: `${documentId}-${fieldName}`,
-  document_id: documentId,
-  field_name: fieldName,
-  field_value: fieldValue,
-  confidence_score: 0.98,
-  manually_corrected: false,
-  created_at: "2026-04-20T00:00:00.000Z",
+  id: overrides.id ?? `${documentId}-${fieldName}`,
+  document_id: overrides.document_id ?? documentId,
+  field_name: overrides.field_name ?? fieldName,
+  field_value: overrides.field_value !== undefined ? overrides.field_value : fieldValue,
+  confidence_score: overrides.confidence_score !== undefined ? overrides.confidence_score : 0.98,
+  manually_corrected: overrides.manually_corrected ?? false,
+  created_at: overrides.created_at ?? "2026-04-20T00:00:00.000Z",
 });
 
 const buildReadyCaseDocuments = (): {
@@ -497,7 +500,11 @@ const buildReviewerWorkflowContext = (
   };
 };
 
-const buildStatefulWorkflowHarness = (): {
+const buildStatefulWorkflowHarness = (
+  options: {
+    manualReviewRpcError?: string;
+  } = {},
+): {
   caseRecord: CaseRecord;
   documents: DocumentRecord[];
   extractedFields: ExtractedFieldRecord[];
@@ -516,6 +523,7 @@ const buildStatefulWorkflowHarness = (): {
   let nextDocumentNumber = documents.length + 1;
   let nextDocumentCreatedAtSecond = 10;
   let nextExtractedFieldNumber = extractedFields.length + 1;
+  const manualReviewRpcError = options.manualReviewRpcError ?? null;
 
   for (const document of documents) {
     storedDocuments.set(
@@ -615,6 +623,119 @@ const buildStatefulWorkflowHarness = (): {
               };
             },
           };
+        }
+
+        if (fn === APPLY_MANUAL_EXTRACTED_FIELD_REVIEW_RPC) {
+          if (manualReviewRpcError) {
+            return {
+              error: new Error(manualReviewRpcError),
+            };
+          }
+
+          const fieldChanges = Array.isArray(args.p_field_changes)
+            ? (args.p_field_changes as Array<Record<string, unknown>>)
+            : null;
+
+          if (!fieldChanges || fieldChanges.length === 0) {
+            return {
+              error: new Error("At least one extracted field edit is required."),
+            };
+          }
+
+          const draftDocuments = documents.map((document) => ({ ...document }));
+          const draftExtractedFields = extractedFields.map((field) => ({ ...field }));
+          let draftNextExtractedFieldNumber = nextExtractedFieldNumber;
+          const touchedDocumentIds = new Set<string>();
+          const reviewedAt = String(args.p_reviewed_at);
+
+          for (const fieldChange of fieldChanges) {
+            const documentId = String(fieldChange.document_id);
+            const fieldName = String(fieldChange.field_name);
+            const existingFieldId =
+              typeof fieldChange.existing_field_id === "string"
+                ? fieldChange.existing_field_id
+                : null;
+            const nextValue =
+              typeof fieldChange.field_value === "string" ? fieldChange.field_value : null;
+            const draftDocument = draftDocuments.find((document) => document.id === documentId);
+
+            if (!draftDocument) {
+              return {
+                error: new Error("Document not found or you do not have access."),
+              };
+            }
+
+            const newerDocumentExists = draftDocuments.some(
+              (document) =>
+                document.case_id === draftDocument.case_id &&
+                document.document_type === draftDocument.document_type &&
+                document.version_number > draftDocument.version_number,
+            );
+
+            if (newerDocumentExists) {
+              return {
+                error: new Error(
+                  "Only blocker-level extracted fields from the latest relevant document versions can be edited.",
+                ),
+              };
+            }
+
+            if (existingFieldId) {
+              const draftField = draftExtractedFields.find(
+                (field) => field.id === existingFieldId && field.document_id === documentId,
+              );
+
+              if (!draftField) {
+                return {
+                  error: new Error("Unable to save the reviewed extracted field."),
+                };
+              }
+
+              Object.assign(draftField, {
+                confidence_score: null,
+                field_value: nextValue,
+                manually_corrected: true,
+              });
+            } else {
+              draftExtractedFields.push(
+                buildExtractedFieldRecord(documentId, fieldName, nextValue ?? "", {
+                  confidence_score: null,
+                  created_at: "2026-04-20T00:05:00.000Z",
+                  field_value: nextValue,
+                  id: `extracted-${draftNextExtractedFieldNumber}`,
+                  manually_corrected: true,
+                }),
+              );
+              draftNextExtractedFieldNumber += 1;
+            }
+
+            touchedDocumentIds.add(documentId);
+          }
+
+          for (const draftDocument of draftDocuments) {
+            if (
+              !touchedDocumentIds.has(draftDocument.id) ||
+              (draftDocument.extraction_status === "succeeded" &&
+                draftDocument.extraction_error === null)
+            ) {
+              continue;
+            }
+
+            Object.assign(draftDocument, {
+              extraction_completed_at: reviewedAt,
+              extraction_error: null,
+              extraction_started_at: draftDocument.extraction_started_at ?? reviewedAt,
+              extraction_status: "succeeded",
+            });
+          }
+
+          documents.splice(0, documents.length, ...draftDocuments);
+          extractedFields.splice(0, extractedFields.length, ...draftExtractedFields);
+          nextExtractedFieldNumber = draftNextExtractedFieldNumber;
+          caseRecord.status = args.p_next_status as CaseRecord["status"];
+          caseRecord.needs_document_reevaluation = Boolean(args.p_needs_document_reevaluation);
+
+          return { error: null };
         }
 
         if (fn === FINALIZE_CASE_REQUIREMENT_EVALUATION_RPC) {
@@ -797,18 +918,33 @@ const buildStatefulWorkflowHarness = (): {
   }
 
   function createExtractedFieldsTable() {
-    let mode: "select" | "delete" | null = null;
+    let mode: "select" | "delete" | "update" | null = null;
     let filters: Record<string, string> = {};
+    let mutation: Partial<
+      Pick<ExtractedFieldRecord, "confidence_score" | "field_value" | "manually_corrected">
+    > | null = null;
 
     return {
       select() {
         mode = "select";
         filters = {};
+        mutation = null;
         return this;
       },
       delete() {
         mode = "delete";
         filters = {};
+        mutation = null;
+        return this;
+      },
+      update(
+        values: Partial<
+          Pick<ExtractedFieldRecord, "confidence_score" | "field_value" | "manually_corrected">
+        >,
+      ) {
+        mode = "update";
+        filters = {};
+        mutation = values;
         return this;
       },
       eq(column: string, value: string) {
@@ -822,6 +958,23 @@ const buildStatefulWorkflowHarness = (): {
           }
 
           return Promise.resolve({ error: null });
+        }
+
+        if (mode === "update" && filters.id && filters.document_id) {
+          const matchingField = extractedFields.find(
+            (field) => field.id === filters.id && field.document_id === filters.document_id,
+          );
+
+          if (matchingField && mutation) {
+            Object.assign(matchingField, mutation);
+          }
+
+          return Promise.resolve({
+            error:
+              matchingField !== undefined
+                ? null
+                : new Error("Unable to save the reviewed extracted field."),
+          });
         }
 
         return this;
@@ -936,7 +1089,9 @@ test("deterministic evaluation ignores stale extracted fields from superseded do
     buildDocumentRecord("course_registration", 1, { id: "course-1" }),
   ];
   const extractedFields = [
-    buildExtractedFieldRecord("offer-1", "job_duties", "Old duties from the superseded version"),
+    buildExtractedFieldRecord("offer-1", "job_duties", "Old duties from the superseded version", {
+      manually_corrected: true,
+    }),
   ];
 
   const result = runDeterministicCaseEvaluation({
@@ -1338,6 +1493,235 @@ test("manual reevaluation preserves the case flag when the latest relevant docum
   assert.equal(reevaluationResult.status, "blocked");
   assert.equal(workflow.caseRecord.status, "blocked");
   assert.equal(workflow.caseRecord.needs_document_reevaluation, true);
+});
+
+test("manual extracted-field save resolves a failed latest document version through reevaluation", async () => {
+  const workflow = buildStatefulWorkflowHarness();
+  const filePath = `${workflow.caseRecord.user_id}/${workflow.caseRecord.id}/upload-offer-letter-2/offer-letter-v2.pdf`;
+
+  workflow.setStoredDocument(filePath, new Uint8Array([0, 159, 255, 0, 12, 4, 0, 255]));
+
+  const uploadResult = await registerUploadedCaseDocument(workflow.createContext(), {
+    caseId: workflow.caseRecord.id,
+    documentType: "offer_letter",
+    fileName: "offer-letter-v2.pdf",
+    filePath,
+    uploadRegistrationId: "upload-offer-letter-2",
+  });
+
+  const saveResult = await saveManualExtractedFields(workflow.createContext(), {
+    caseId: workflow.caseRecord.id,
+    fields: [
+      {
+        documentId: uploadResult.documentId,
+        fieldName: "job_duties",
+        fieldValue: "Build product features and support releases manually",
+      },
+    ],
+  });
+
+  assert.equal(saveResult.status, "ready_for_submission");
+  assert.equal(saveResult.updatedFieldCount, 1);
+  assert.equal(workflow.caseRecord.status, "ready_for_submission");
+  assert.equal(workflow.caseRecord.needs_document_reevaluation, false);
+  assert.equal(
+    workflow.documents.find((document) => document.id === uploadResult.documentId)
+      ?.extraction_status,
+    "succeeded",
+  );
+  assert.equal(
+    workflow.documents.find((document) => document.id === uploadResult.documentId)
+      ?.extraction_error,
+    null,
+  );
+  assert.deepEqual(
+    workflow.extractedFields.find(
+      (field) => field.document_id === uploadResult.documentId && field.field_name === "job_duties",
+    ),
+    buildExtractedFieldRecord(
+      uploadResult.documentId,
+      "job_duties",
+      "Build product features and support releases manually",
+      {
+        confidence_score: null,
+        created_at: "2026-04-20T00:05:00.000Z",
+        id: "extracted-2",
+        manually_corrected: true,
+      },
+    ),
+  );
+  assert.equal(
+    workflow.timelineEvents.some((event) => event.event_type === "extracted_fields_reviewed"),
+    true,
+  );
+  assert.equal(
+    workflow.auditEntries.some(
+      (entry) =>
+        entry.action_type === "extracted_field_reviewed" &&
+        entry.field_name === "offer_letter.job_duties" &&
+        entry.old_value === null &&
+        entry.new_value === "Build product features and support releases manually",
+    ),
+    true,
+  );
+});
+
+test("manual extracted-field save validates the full request before mutating primary state", async () => {
+  const workflow = buildStatefulWorkflowHarness();
+  const filePath = `${workflow.caseRecord.user_id}/${workflow.caseRecord.id}/upload-offer-letter-2/offer-letter-v2.pdf`;
+
+  workflow.setStoredDocument(filePath, new Uint8Array([0, 159, 255, 0, 12, 4, 0, 255]));
+
+  const uploadResult = await registerUploadedCaseDocument(workflow.createContext(), {
+    caseId: workflow.caseRecord.id,
+    documentType: "offer_letter",
+    fileName: "offer-letter-v2.pdf",
+    filePath,
+    uploadRegistrationId: "upload-offer-letter-2",
+  });
+
+  await assert.rejects(
+    () =>
+      saveManualExtractedFields(workflow.createContext(), {
+        caseId: workflow.caseRecord.id,
+        fields: [
+          {
+            documentId: uploadResult.documentId,
+            fieldName: "job_duties",
+            fieldValue: "Build product features and support releases manually",
+          },
+          {
+            documentId: "offer-1",
+            fieldName: "job_duties",
+            fieldValue: "Superseded version edit",
+          },
+        ],
+      }),
+    /Only blocker-level extracted fields from the latest relevant document versions can be edited\./,
+  );
+
+  assert.equal(
+    workflow.extractedFields.some(
+      (field) => field.document_id === uploadResult.documentId && field.field_name === "job_duties",
+    ),
+    false,
+  );
+  assert.equal(
+    workflow.documents.find((document) => document.id === uploadResult.documentId)
+      ?.extraction_status,
+    "failed",
+  );
+  assert.match(
+    workflow.documents.find((document) => document.id === uploadResult.documentId)
+      ?.extraction_error ?? "",
+    /production OCR/i,
+  );
+  assert.equal(workflow.caseRecord.status, "ready_for_submission");
+  assert.equal(workflow.caseRecord.needs_document_reevaluation, true);
+  assert.equal(
+    workflow.timelineEvents.some((event) => event.event_type === "extracted_fields_reviewed"),
+    false,
+  );
+  assert.equal(
+    workflow.auditEntries.some((entry) => entry.action_type === "extracted_field_reviewed"),
+    false,
+  );
+});
+
+test("manual extracted-field save rolls back primary state when reevaluation persistence fails", async () => {
+  const workflow = buildStatefulWorkflowHarness({
+    manualReviewRpcError: "Manual extracted-field reevaluation failed.",
+  });
+  const filePath = `${workflow.caseRecord.user_id}/${workflow.caseRecord.id}/upload-offer-letter-2/offer-letter-v2.pdf`;
+
+  workflow.setStoredDocument(filePath, new Uint8Array([0, 159, 255, 0, 12, 4, 0, 255]));
+
+  const uploadResult = await registerUploadedCaseDocument(workflow.createContext(), {
+    caseId: workflow.caseRecord.id,
+    documentType: "offer_letter",
+    fileName: "offer-letter-v2.pdf",
+    filePath,
+    uploadRegistrationId: "upload-offer-letter-2",
+  });
+
+  await assert.rejects(
+    () =>
+      saveManualExtractedFields(workflow.createContext(), {
+        caseId: workflow.caseRecord.id,
+        fields: [
+          {
+            documentId: uploadResult.documentId,
+            fieldName: "job_duties",
+            fieldValue: "Build product features and support releases manually",
+          },
+        ],
+      }),
+    /Manual extracted-field reevaluation failed\./,
+  );
+
+  assert.equal(
+    workflow.extractedFields.some(
+      (field) => field.document_id === uploadResult.documentId && field.field_name === "job_duties",
+    ),
+    false,
+  );
+  assert.equal(
+    workflow.documents.find((document) => document.id === uploadResult.documentId)
+      ?.extraction_status,
+    "failed",
+  );
+  assert.match(
+    workflow.documents.find((document) => document.id === uploadResult.documentId)
+      ?.extraction_error ?? "",
+    /production OCR/i,
+  );
+  assert.equal(workflow.caseRecord.status, "ready_for_submission");
+  assert.equal(workflow.caseRecord.needs_document_reevaluation, true);
+  assert.equal(
+    workflow.timelineEvents.some((event) => event.event_type === "extracted_fields_reviewed"),
+    false,
+  );
+  assert.equal(
+    workflow.auditEntries.some((entry) => entry.action_type === "extracted_field_reviewed"),
+    false,
+  );
+});
+
+test("manual extracted-field save rejects superseded document versions", async () => {
+  const workflow = buildStatefulWorkflowHarness();
+  const filePath = `${workflow.caseRecord.user_id}/${workflow.caseRecord.id}/upload-offer-letter-2/offer-letter-v2.pdf`;
+
+  workflow.setStoredDocument(filePath, "Job Duties: Build product features and support releases");
+
+  await registerUploadedCaseDocument(workflow.createContext(), {
+    caseId: workflow.caseRecord.id,
+    documentType: "offer_letter",
+    fileName: "offer-letter-v2.pdf",
+    filePath,
+    uploadRegistrationId: "upload-offer-letter-2",
+  });
+
+  await assert.rejects(
+    () =>
+      saveManualExtractedFields(workflow.createContext(), {
+        caseId: workflow.caseRecord.id,
+        fields: [
+          {
+            documentId: "offer-1",
+            fieldName: "job_duties",
+            fieldValue: "Superseded version edit",
+          },
+        ],
+      }),
+    /Only blocker-level extracted fields from the latest relevant document versions can be edited\./,
+  );
+
+  assert.equal(
+    workflow.extractedFields.find(
+      (field) => field.document_id === "offer-1" && field.field_name === "job_duties",
+    )?.field_value,
+    "Build product features",
+  );
 });
 
 test("retry rejects fresh processing extraction before it becomes stale", async () => {

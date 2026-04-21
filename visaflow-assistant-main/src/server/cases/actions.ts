@@ -9,6 +9,7 @@ import {
   validateRegisterUploadedCaseDocumentInput,
   validateRetryCaseDocumentExtractionInput,
   validateRequestCaseChangesInput,
+  validateSaveManualExtractedFieldsInput,
   validateSaveCaseDraftInput,
   validateSubmitCaseForReviewInput,
 } from "./validation";
@@ -80,6 +81,21 @@ export const retryCaseDocumentExtractionAction = createServerFn({ method: "POST"
     const { retryCaseDocumentExtraction } = await import("./workflows.server");
 
     return retryCaseDocumentExtraction(
+      {
+        supabase: context.supabase,
+        userId: context.userId,
+      },
+      data,
+    );
+  });
+
+export const saveManualExtractedFieldsAction = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(validateSaveManualExtractedFieldsInput)
+  .handler(async ({ context, data }) => {
+    const { saveManualExtractedFields } = await import("./workflows.server");
+
+    return saveManualExtractedFields(
       {
         supabase: context.supabase,
         userId: context.userId,

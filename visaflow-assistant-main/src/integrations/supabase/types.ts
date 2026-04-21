@@ -499,6 +499,17 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      apply_manual_extracted_field_review: {
+        Args: {
+          p_case_id: string;
+          p_field_changes: Json;
+          p_needs_document_reevaluation?: boolean;
+          p_next_status: Database["public"]["Enums"]["case_status"];
+          p_requirements?: Json;
+          p_reviewed_at: string;
+        };
+        Returns: undefined;
+      };
       apply_reviewer_case_decision: {
         Args: {
           p_case_id: string;

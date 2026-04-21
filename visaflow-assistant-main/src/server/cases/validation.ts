@@ -34,6 +34,15 @@ export interface RetryCaseDocumentExtractionInput {
   documentId: string;
 }
 
+export interface SaveManualExtractedFieldsInput {
+  caseId: string;
+  fields: Array<{
+    documentId: string;
+    fieldName: string;
+    fieldValue: string | null;
+  }>;
+}
+
 export interface SubmitCaseForReviewInput {
   caseId: string;
 }
@@ -200,6 +209,40 @@ export const validateRetryCaseDocumentExtractionInput = (
   return {
     caseId: parseRequiredString(input, "caseId", "Case"),
     documentId: parseRequiredString(input, "documentId", "Document"),
+  };
+};
+
+export const validateSaveManualExtractedFieldsInput = (
+  input: unknown,
+): SaveManualExtractedFieldsInput => {
+  if (!isRecord(input)) {
+    throw new Error("Extracted field review input is required.");
+  }
+
+  if (!Array.isArray(input.fields) || input.fields.length === 0) {
+    throw new Error("At least one extracted field edit is required.");
+  }
+
+  const fields = input.fields.map((field, index) => {
+    if (!isRecord(field)) {
+      throw new Error(`Extracted field edit #${index + 1} is invalid.`);
+    }
+
+    return {
+      documentId: parseRequiredString(field, "documentId", "Document"),
+      fieldName: parseRequiredString(field, "fieldName", "Field name"),
+      fieldValue: parseNullableString(field, "fieldValue", "Field value"),
+    };
+  });
+
+  const uniqueFieldKeys = new Set(fields.map((field) => `${field.documentId}:${field.fieldName}`));
+  if (uniqueFieldKeys.size !== fields.length) {
+    throw new Error("Each extracted field can only be edited once per save request.");
+  }
+
+  return {
+    caseId: parseRequiredString(input, "caseId", "Case"),
+    fields,
   };
 };
 

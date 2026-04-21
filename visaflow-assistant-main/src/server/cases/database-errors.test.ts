@@ -37,6 +37,21 @@ test("maps missing reviewer decision RPC errors to an actionable migration messa
   assert.equal(normalized.message, formatCaseWorkflowSchemaDriftMessage("Case review"));
 });
 
+test("maps missing manual extracted-field review RPC errors to an actionable migration message", () => {
+  const normalized = normalizeCaseWorkflowDatabaseError(
+    {
+      code: "PGRST202",
+      message: "Could not find the function public.apply_manual_extracted_field_review",
+    },
+    {
+      operationLabel: "Extracted field review",
+      fallbackMessage: "Unable to save the reviewed extracted fields.",
+    },
+  );
+
+  assert.equal(normalized.message, formatCaseWorkflowSchemaDriftMessage("Extracted field review"));
+});
+
 test("treats missing upload_registration_id column errors as schema drift", () => {
   const error = {
     code: "42703",
