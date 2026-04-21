@@ -12,7 +12,7 @@
     "cf:whoami": "wrangler whoami",
     "cf:typegen": "wrangler types",
     "deploy": "npm run build && wrangler deploy",
-    "test:cases": "node --test --experimental-strip-types src/server/cases/database-errors.test.ts src/server/cases/document-extraction.test.ts src/server/cases/document-registration.test.ts src/server/cases/workflows.server.test.ts",
+    "test:cases": "node --test --experimental-strip-types src/server/cases/database-errors.test.ts src/server/cases/document-extraction.test.ts src/server/cases/document-registration.test.ts src/server/cases/reviewer-read.server.test.ts src/server/cases/workflows.server.test.ts",
     "lint": "eslint .",
     "format": "prettier --write ."
   },

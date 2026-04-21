@@ -3,7 +3,6 @@ import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { formatDistanceToNow } from "date-fns";
 import { ArrowLeft, FileText, Loader2, AlertCircle, Shield, History } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 import { useAuth } from "@/lib/auth";
 import { getLatestDocumentsByType, summarizeRequirementRows } from "@/lib/cases/requirements";
@@ -12,6 +11,7 @@ import { buildSupabaseServerFnHeaders } from "@/lib/server-functions";
 import {
   approveCaseAction,
   denyCaseAction,
+  loadReviewerCaseDetailAction,
   requestCaseChangesAction,
 } from "@/server/cases/actions";
 import { AlertBanner } from "@/components/shared/AlertBanner";
@@ -56,43 +56,35 @@ export function ReviewerCaseDetailPage({ caseId }: ReviewerCaseDetailPageProps) 
 
   const approveCaseMutation = useServerFn(approveCaseAction);
   const denyCaseMutation = useServerFn(denyCaseAction);
+  const loadReviewerCaseDetailMutation = useServerFn(loadReviewerCaseDetailAction);
   const requestCaseChangesMutation = useServerFn(requestCaseChangesAction);
 
   const load = useCallback(async () => {
     setLoading(true);
     setLoadError("");
 
-    const [caseRes, docsRes, reqsRes, timelineRes, auditRes] = await Promise.all([
-      supabase.from("cases").select("*").eq("id", caseId).maybeSingle(),
-      supabase
-        .from("documents")
-        .select("*")
-        .eq("case_id", caseId)
-        .order("created_at", { ascending: false }),
-      supabase.from("case_requirements").select("*").eq("case_id", caseId).order("severity"),
-      supabase
-        .from("case_timeline_events")
-        .select("*")
-        .eq("case_id", caseId)
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("audit_logs")
-        .select("*")
-        .eq("case_id", caseId)
-        .order("created_at", { ascending: false }),
-    ]);
+    try {
+      const detail = await loadReviewerCaseDetailMutation({
+        data: { caseId },
+        headers: buildSupabaseServerFnHeaders(session),
+      });
 
-    const nextError =
-      caseRes.error ?? docsRes.error ?? reqsRes.error ?? timelineRes.error ?? auditRes.error;
-
-    setCaseData(caseRes.data ?? null);
-    setDocuments(docsRes.data ?? []);
-    setRequirements(reqsRes.data ?? []);
-    setTimeline(timelineRes.data ?? []);
-    setAuditLogs(auditRes.data ?? []);
-    setLoadError(nextError?.message ?? "");
-    setLoading(false);
-  }, [caseId]);
+      setCaseData(detail?.caseData ?? null);
+      setDocuments(detail?.documents ?? []);
+      setRequirements(detail?.requirements ?? []);
+      setTimeline(detail?.timeline ?? []);
+      setAuditLogs(detail?.auditLogs ?? []);
+    } catch (error) {
+      setCaseData(null);
+      setDocuments([]);
+      setRequirements([]);
+      setTimeline([]);
+      setAuditLogs([]);
+      setLoadError(error instanceof Error ? error.message : "Unable to load this case for review.");
+    } finally {
+      setLoading(false);
+    }
+  }, [caseId, loadReviewerCaseDetailMutation, session]);
 
   useEffect(() => {
     if (authLoading) {

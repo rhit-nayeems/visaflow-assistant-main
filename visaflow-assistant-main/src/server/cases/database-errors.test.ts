@@ -38,18 +38,39 @@ test("maps missing reviewer decision RPC errors to an actionable migration messa
 });
 
 test("maps missing manual extracted-field review RPC errors to an actionable migration message", () => {
-  const normalized = normalizeCaseWorkflowDatabaseError(
-    {
-      code: "PGRST202",
-      message: "Could not find the function public.apply_manual_extracted_field_review",
-    },
-    {
-      operationLabel: "Extracted field review",
-      fallbackMessage: "Unable to save the reviewed extracted fields.",
-    },
-  );
+  const error = {
+    code: "PGRST202",
+    message: "Could not find the function public.apply_manual_extracted_field_review",
+  };
+
+  assert.equal(isCaseWorkflowSchemaDriftError(error), true);
+
+  const normalized = normalizeCaseWorkflowDatabaseError(error, {
+    operationLabel: "Extracted field review",
+    fallbackMessage: "Unable to save the reviewed extracted fields.",
+  });
 
   assert.equal(normalized.message, formatCaseWorkflowSchemaDriftMessage("Extracted field review"));
+});
+
+test("does not treat runtime manual extracted-field review failures as schema drift", () => {
+  const error = {
+    code: "P0001",
+    message: "apply_manual_extracted_field_review failed while writing reviewed fields",
+    details: "Reviewed field payload did not match the document extraction state.",
+  };
+
+  assert.equal(isCaseWorkflowSchemaDriftError(error), false);
+
+  const normalized = normalizeCaseWorkflowDatabaseError(error, {
+    operationLabel: "Extracted field review",
+    fallbackMessage: "Unable to save the reviewed extracted fields.",
+  });
+
+  assert.equal(
+    normalized.message,
+    "apply_manual_extracted_field_review failed while writing reviewed fields",
+  );
 });
 
 test("treats missing upload_registration_id column errors as schema drift", () => {

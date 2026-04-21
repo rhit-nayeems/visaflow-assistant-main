@@ -66,7 +66,6 @@ export const isCaseWorkflowSchemaDriftError = (
     databaseErrorText.includes("could not find the function public.register_case_document") ||
     databaseErrorText.includes("could not find the function public.apply_reviewer_case_decision") ||
     databaseErrorText.includes("finalize_case_requirement_evaluation") ||
-    databaseErrorText.includes("apply_manual_extracted_field_review") ||
     databaseErrorText.includes("register_case_document") ||
     databaseErrorText.includes("apply_reviewer_case_decision") ||
     databaseErrorText.includes('column "upload_registration_id" does not exist') ||

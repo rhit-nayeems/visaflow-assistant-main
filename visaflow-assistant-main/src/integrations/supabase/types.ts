@@ -411,6 +411,35 @@ export type Database = {
         };
         Relationships: [];
       };
+      reviewer_school_assignments: {
+        Row: {
+          created_at: string;
+          id: string;
+          school_id: string;
+          user_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          id?: string;
+          school_id: string;
+          user_id: string;
+        };
+        Update: {
+          created_at?: string;
+          id?: string;
+          school_id?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "reviewer_school_assignments_school_id_fkey";
+            columns: ["school_id"];
+            isOneToOne: false;
+            referencedRelation: "schools";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       school_templates: {
         Row: {
           config_json: Json;
@@ -499,6 +528,13 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      can_review_case: {
+        Args: {
+          _case_id: string;
+          _user_id: string;
+        };
+        Returns: boolean;
+      };
       apply_manual_extracted_field_review: {
         Args: {
           p_case_id: string;

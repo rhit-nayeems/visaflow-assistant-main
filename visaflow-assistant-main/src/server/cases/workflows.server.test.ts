@@ -373,6 +373,8 @@ const buildReviewerWorkflowContext = (
     reviewerHasSchoolAdminRole?: boolean;
     reviewerUserId?: string;
     caseOverrides?: Partial<CaseRecord>;
+    caseSchoolId?: string;
+    reviewerAssignedSchoolIds?: string[];
     staleReviewerDecisionStatus?: Extract<
       CaseRecord["status"],
       "approved" | "denied" | "change_pending"
@@ -394,6 +396,8 @@ const buildReviewerWorkflowContext = (
   const reviewerUserId = options.reviewerUserId ?? "reviewer-123";
   const reviewerHasSchoolAdminRole = options.reviewerHasSchoolAdminRole ?? true;
   const staleReviewerDecisionStatus = options.staleReviewerDecisionStatus ?? null;
+  const caseSchoolId = options.caseSchoolId ?? "school-a";
+  const reviewerAssignedSchoolIds = options.reviewerAssignedSchoolIds ?? [caseSchoolId];
   const caseRecord = buildCaseRecord(status, options.caseOverrides);
   const timelineEvents: TimelineEventInsert[] = [];
   const auditEntries: AuditLogInsert[] = [];
@@ -426,6 +430,13 @@ const buildReviewerWorkflowContext = (
             return {
               data: null,
               error: new Error("Reviewer access requires the school_admin role."),
+            };
+          }
+
+          if (!reviewerAssignedSchoolIds.includes(caseSchoolId)) {
+            return {
+              data: null,
+              error: new Error("Case not found or you do not have reviewer access."),
             };
           }
 
@@ -1904,6 +1915,34 @@ test("reviewer decisions reject callers without the school_admin role", async ()
         reviewerComment: null,
       }),
     /Reviewer access requires the school_admin role\./,
+  );
+
+  assert.equal(workflow.caseRecord.status, "submitted");
+  assert.equal(workflow.caseUpdates.length, 0);
+  assert.deepEqual(workflow.reviewerDecisionCalls, [
+    {
+      p_case_id: workflow.caseRecord.id,
+      p_next_status: "approved",
+      p_reviewer_comment: null,
+    },
+  ]);
+  assert.equal(workflow.timelineEvents.length, 0);
+  assert.equal(workflow.auditEntries.length, 0);
+});
+
+test("reviewer decisions reject school admins not assigned to the case school", async () => {
+  const workflow = buildReviewerWorkflowContext("submitted", {
+    caseSchoolId: "school-b",
+    reviewerAssignedSchoolIds: ["school-a"],
+  });
+
+  await assert.rejects(
+    () =>
+      approveCase(workflow.context, {
+        caseId: workflow.caseRecord.id,
+        reviewerComment: null,
+      }),
+    /Case not found or you do not have reviewer access\./,
   );
 
   assert.equal(workflow.caseRecord.status, "submitted");

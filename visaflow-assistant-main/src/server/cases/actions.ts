@@ -5,6 +5,7 @@ import {
   validateApproveCaseInput,
   validateDenyCaseInput,
   validateFinalizeCaseCreationAndEvaluateInput,
+  validateLoadReviewerCaseDetailInput,
   validateReevaluateCaseAfterUploadsInput,
   validateRegisterUploadedCaseDocumentInput,
   validateRetryCaseDocumentExtractionInput,
@@ -13,6 +14,33 @@ import {
   validateSaveCaseDraftInput,
   validateSubmitCaseForReviewInput,
 } from "./validation";
+
+export const listReviewerCasesAction = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(() => ({}))
+  .handler(async ({ context }) => {
+    const { listReviewerCases } = await import("./reviewer-read.server");
+
+    return listReviewerCases({
+      supabase: context.supabase,
+      userId: context.userId,
+    });
+  });
+
+export const loadReviewerCaseDetailAction = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(validateLoadReviewerCaseDetailInput)
+  .handler(async ({ context, data }) => {
+    const { loadReviewerCaseDetail } = await import("./reviewer-read.server");
+
+    return loadReviewerCaseDetail(
+      {
+        supabase: context.supabase,
+        userId: context.userId,
+      },
+      data.caseId,
+    );
+  });
 
 export const saveCaseDraftAction = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])

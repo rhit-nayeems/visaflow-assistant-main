@@ -62,6 +62,10 @@ export interface RequestCaseChangesInput {
   reviewerComment: string;
 }
 
+export interface LoadReviewerCaseDetailInput {
+  caseId: string;
+}
+
 export interface AddCaseNoteInput {
   caseId: string;
   noteId?: string;
@@ -286,6 +290,18 @@ export const validateRequestCaseChangesInput = (input: unknown): RequestCaseChan
   return {
     caseId: parseRequiredString(input, "caseId", "Case"),
     reviewerComment: parseRequiredString(input, "reviewerComment", "Reviewer comment"),
+  };
+};
+
+export const validateLoadReviewerCaseDetailInput = (
+  input: unknown,
+): LoadReviewerCaseDetailInput => {
+  if (!isRecord(input)) {
+    throw new Error("Review case detail input is required.");
+  }
+
+  return {
+    caseId: parseRequiredString(input, "caseId", "Case"),
   };
 };
 

@@ -19,7 +19,26 @@ const CASE_WORKFLOW_CASE_SELECT = [
   "updated_at",
 ].join(", ");
 
+const REVIEWABLE_CASE_SELECT = `${CASE_WORKFLOW_CASE_SELECT}, school_templates!inner(school_id)`;
+const REVIEWABLE_CASE_STATUSES = [
+  "submitted",
+  "approved",
+  "denied",
+  "change_pending",
+  "completed",
+] as const;
 const SCHOOL_ADMIN_ROLE = "school_admin";
+
+interface ReviewableCaseRow extends CaseRecord {
+  school_templates: {
+    school_id: string;
+  } | null;
+}
+
+const withoutSchoolTemplateRelation = ({
+  school_templates: _schoolTemplate,
+  ...caseRecord
+}: ReviewableCaseRow): CaseRecord => caseRecord;
 
 export const findOwnedCase = async (
   context: CaseWorkflowContext,
@@ -72,16 +91,37 @@ export const assertSchoolAdminReviewer = async (context: CaseWorkflowContext) =>
   }
 };
 
+export const loadReviewerSchoolIds = async (context: CaseWorkflowContext): Promise<string[]> => {
+  await assertSchoolAdminReviewer(context);
+
+  const { data, error } = await context.supabase
+    .from("reviewer_school_assignments")
+    .select("school_id")
+    .eq("user_id", context.userId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return Array.from(new Set((data ?? []).map(({ school_id }) => school_id)));
+};
+
 export const findReviewableCase = async (
   context: CaseWorkflowContext,
   caseId: string,
 ): Promise<CaseRecord | null> => {
-  await assertSchoolAdminReviewer(context);
+  const reviewerSchoolIds = await loadReviewerSchoolIds(context);
+
+  if (reviewerSchoolIds.length === 0) {
+    return null;
+  }
 
   const { data, error } = await context.supabase
     .from("cases")
-    .select(CASE_WORKFLOW_CASE_SELECT)
+    .select(REVIEWABLE_CASE_SELECT)
     .eq("id", caseId)
+    .in("school_templates.school_id", reviewerSchoolIds)
+    .in("status", REVIEWABLE_CASE_STATUSES)
     .maybeSingle();
 
   if (error) {
@@ -91,7 +131,7 @@ export const findReviewableCase = async (
     });
   }
 
-  return data as CaseRecord | null;
+  return data ? withoutSchoolTemplateRelation(data as unknown as ReviewableCaseRow) : null;
 };
 
 export const loadReviewableCase = async (

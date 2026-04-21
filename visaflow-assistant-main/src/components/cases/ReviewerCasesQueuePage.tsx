@@ -1,36 +1,27 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { formatDistanceToNow } from "date-fns";
 import { ClipboardCheck, Loader2, Search } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
-import type { Tables } from "@/integrations/supabase/types";
 import { useAuth } from "@/lib/auth";
 import type { CaseStatusKey } from "@/lib/constants";
+import { buildSupabaseServerFnHeaders } from "@/lib/server-functions";
+import { listReviewerCasesAction } from "@/server/cases/actions";
+import type { ReviewerQueueCase } from "@/server/cases/reviewer-read.server";
 import { AlertBanner } from "@/components/shared/AlertBanner";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { Input } from "@/components/ui/input";
 
-type ReviewQueueCase = Pick<
-  Tables<"cases">,
-  | "id"
-  | "user_id"
-  | "employer_name"
-  | "role_title"
-  | "work_location"
-  | "start_date"
-  | "updated_at"
-  | "status"
->;
-
 const formatShortId = (value: string) => `${value.slice(0, 8)}...`;
 
 export function ReviewerCasesQueuePage() {
-  const { isLoading: authLoading, isSchoolAdmin } = useAuth();
-  const [cases, setCases] = useState<ReviewQueueCase[]>([]);
+  const { isLoading: authLoading, isSchoolAdmin, session } = useAuth();
+  const [cases, setCases] = useState<ReviewerQueueCase[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [error, setError] = useState("");
+  const listReviewerCasesMutation = useServerFn(listReviewerCasesAction);
 
   useEffect(() => {
     if (authLoading) {
@@ -43,22 +34,43 @@ export function ReviewerCasesQueuePage() {
       return;
     }
 
-    setLoading(true);
-    setError("");
+    let cancelled = false;
 
-    void supabase
-      .from("cases")
-      .select(
-        "id, user_id, employer_name, role_title, work_location, start_date, updated_at, status",
-      )
-      .eq("status", "submitted")
-      .order("updated_at", { ascending: false })
-      .then(({ data, error: queueError }) => {
-        setCases((data ?? []) as ReviewQueueCase[]);
-        setError(queueError?.message ?? "");
-        setLoading(false);
-      });
-  }, [authLoading, isSchoolAdmin]);
+    const load = async () => {
+      setLoading(true);
+      setError("");
+
+      try {
+        const scopedCases = await listReviewerCasesMutation({
+          data: {},
+          headers: buildSupabaseServerFnHeaders(session),
+        });
+
+        if (cancelled) {
+          return;
+        }
+
+        setCases(scopedCases);
+      } catch (queueError) {
+        if (cancelled) {
+          return;
+        }
+
+        setCases([]);
+        setError(queueError instanceof Error ? queueError.message : "Unable to load review queue.");
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading, isSchoolAdmin, listReviewerCasesMutation, session]);
 
   const filteredCases = cases.filter((caseItem) => {
     const searchValue = search.toLowerCase();
