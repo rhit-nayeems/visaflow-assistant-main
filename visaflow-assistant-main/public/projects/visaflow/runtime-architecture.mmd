@@ -1,0 +1,45 @@
+
+flowchart LR
+    Browser(["Browser"])
+
+    subgraph CF["Cloudflare Workers · nodejs_compat"]
+        direction TB
+        TS["TanStack Start<br/>SSR + React 19 client"]
+        SF["Server functions<br/>typed actions · createServerFn"]
+        MW["requireSupabaseAuth<br/>middleware"]
+    end
+
+    subgraph SB["Supabase (managed)"]
+        direction TB
+        AUTH["Supabase Auth"]
+        SC["Per-request Supabase client<br/>forwarded user JWT"]
+        PG[("Postgres · RLS")]
+        POL["RLS policies · atomic RPCs"]
+        ST[["Private Storage<br/>bucket: case-documents"]]
+    end
+
+    %% --- request path ---
+    Browser -->|HTTPS| TS
+    TS -->|invoke| SF
+    SF -->|.middleware| MW
+    MW -->|getClaims token| AUTH
+    MW -->|authenticated context| SC
+    SC -->|SQL · RLS enforced| PG
+    SC -->|upload / download| ST
+    PG -->|enforced by| POL
+
+    %% --- container + node styling ---
+    style CF fill:#0b1220,stroke:#6366f1,color:#c7d2fe
+    style SB fill:#0b1220,stroke:#10b981,color:#bbf7d0
+
+    classDef client fill:#1e293b,stroke:#64748b,color:#e2e8f0
+    classDef cf fill:#312e81,stroke:#6366f1,color:#e0e7ff
+    classDef supa fill:#0c4a6e,stroke:#38bdf8,color:#e0f2fe
+    classDef policy fill:#064e3b,stroke:#10b981,color:#d1fae5
+    classDef store fill:#1e293b,stroke:#64748b,color:#e2e8f0
+
+    class Browser client
+    class TS,SF,MW cf
+    class AUTH,SC,PG supa
+    class POL policy
+    class ST store

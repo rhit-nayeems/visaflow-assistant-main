@@ -1,0 +1,58 @@
+
+flowchart LR
+    %% --- nodes: the 10 case statuses + a shared terminal ---
+    draft["draft"]
+    missing_documents["missing_documents"]
+    in_progress["in_progress"]
+    blocked["blocked"]
+    ready_for_submission["ready_for_submission"]
+    submitted["submitted"]
+    approved["approved"]
+    denied["denied"]
+    change_pending["change_pending"]
+    completed["completed"]
+    done(["Closed — terminal"])
+
+    %% --- edges (declaration order defines linkStyle indices) ---
+    draft --> missing_documents
+    draft --> blocked
+    draft --> ready_for_submission
+    missing_documents --> blocked
+    missing_documents --> ready_for_submission
+    blocked --> ready_for_submission
+    in_progress --> ready_for_submission
+    ready_for_submission -->|submit| submitted
+    submitted -->|approve| approved
+    submitted -->|deny| denied
+    submitted -->|request changes| change_pending
+    approved -->|finalize| completed
+    approved -->|re-review| change_pending
+    change_pending -->|resubmit| ready_for_submission
+    denied --> done
+    completed --> done
+
+    %% --- highlight the re-review loop: approved -> change_pending ---
+    %% It is the 13th edge declared, so its zero-based index is 12.
+    linkStyle 12 stroke:#8b5cf6,stroke-width:3px,color:#c4b5fd
+
+    %% --- status color classes ---
+    classDef green fill:#064e3b,stroke:#10b981,color:#d1fae5
+    classDef amber fill:#451a03,stroke:#f59e0b,color:#fde68a
+    classDef rose fill:#4c0519,stroke:#f43f5e,color:#fecdd3
+    classDef indigo fill:#312e81,stroke:#6366f1,color:#e0e7ff
+    classDef blue fill:#0c4a6e,stroke:#38bdf8,color:#e0f2fe
+    classDef slate fill:#1e293b,stroke:#64748b,color:#e2e8f0
+    classDef violet fill:#3b0764,stroke:#8b5cf6,color:#ede9fe
+    classDef terminal fill:#020617,stroke:#475569,color:#94a3b8
+
+    class draft slate
+    class missing_documents amber
+    class in_progress blue
+    class blocked rose
+    class ready_for_submission green
+    class submitted indigo
+    class approved green
+    class denied rose
+    class change_pending violet
+    class completed green
+    class done terminal

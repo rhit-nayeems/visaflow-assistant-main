@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="820" viewBox="0 0 1280 820">
+    <defs>
+    <linearGradient id="bgg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0f172a"/><stop offset="1" stop-color="#0a0f1c"/>
+    </linearGradient>
+    <marker id="arr-94a3b8" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/></marker><marker id="arr-6366f1" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#6366f1"/></marker><marker id="arr-8b5cf6" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8b5cf6"/></marker><marker id="arr-10b981" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#10b981"/></marker><marker id="arr-f59e0b" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#f59e0b"/></marker><marker id="arr-f43f5e" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#f43f5e"/></marker><marker id="arr-38bdf8" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#38bdf8"/></marker><marker id="arr-64748b" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#64748b"/></marker><marker id="arr-64748b" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#64748b"/></marker>
+  </defs><rect width="1280" height="820" fill="url(#bgg)"/>
+    <text x="48" y="56" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="29" font-weight="800" fill="#e2e8f0">Case requirements engine — 10-status lifecycle</text>
+    <text x="48" y="86" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15.5" fill="#94a3b8">Deterministic status derivation · server-enforced, atomic transitions</text>
+    <g><rect x="48" y="132" width="310.4" height="22" rx="11" fill="#38bdf8" fill-opacity="0.14" stroke="#38bdf8" stroke-opacity="0.55"/>
+    <text x="203.2" y="147" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11.5" fill="#38bdf8" text-anchor="middle">1 · Student build + deterministic evaluation</text></g><g><rect x="540" y="268" width="158.6" height="22" rx="11" fill="#6366f1" fill-opacity="0.14" stroke="#6366f1" stroke-opacity="0.55"/>
+    <text x="619.3" y="283" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11.5" fill="#6366f1" text-anchor="middle">2 · Reviewer decision</text></g><g>
+    <rect x="48" y="170" width="200" height="56" rx="13" fill="#16213a" stroke="#64748b" stroke-width="2"/>
+    <circle cx="70" cy="198" r="6" fill="#64748b"/>
+    <text x="88" y="203" font-family="Consolas, 'DejaVu Sans Mono', Menlo, monospace" font-size="14" fill="#e2e8f0" font-weight="600">draft</text>
+  </g><g>
+    <rect x="294" y="170" width="200" height="56" rx="13" fill="#16213a" stroke="#f59e0b" stroke-width="2"/>
+    <circle cx="316" cy="198" r="6" fill="#f59e0b"/>
+    <text x="334" y="203" font-family="Consolas, 'DejaVu Sans Mono', Menlo, monospace" font-size="14" fill="#e2e8f0" font-weight="600">missing_documents</text>
+  </g><g>
+    <rect x="540" y="170" width="200" height="56" rx="13" fill="#16213a" stroke="#38bdf8" stroke-width="2"/>
+    <circle cx="562" cy="198" r="6" fill="#38bdf8"/>
+    <text x="580" y="203" font-family="Consolas, 'DejaVu Sans Mono', Menlo, monospace" font-size="14" fill="#e2e8f0" font-weight="600">in_progress</text>
+  </g><g>
+    <rect x="786" y="170" width="200" height="56" rx="13" fill="#16213a" stroke="#f43f5e" stroke-width="2"/>
+    <circle cx="808" cy="198" r="6" fill="#f43f5e"/>
+    <text x="826" y="203" font-family="Consolas, 'DejaVu Sans Mono', Menlo, monospace" font-size="14" fill="#e2e8f0" font-weight="600">blocked</text>
+  </g><g>
+    <rect x="1032" y="170" width="200" height="56" rx="13" fill="#16213a" stroke="#10b981" stroke-width="2"/>
+    <circle cx="1054" cy="198" r="6" fill="#10b981"/>
+    <text x="1072" y="203" font-family="Consolas, 'DejaVu Sans Mono', Menlo, monospace" font-size="14" fill="#e2e8f0" font-weight="600">ready_for_submission</text>
+  </g><path d="M248,198 L294,198" fill="none" stroke="#94a3b8" stroke-width="2.4" marker-end="url(#arr-94a3b8)"/><g><rect x="242.9" y="186" width="56.2" height="22" rx="6" fill="#0a0f1c" stroke="#283449"/>
+    <text x="271" y="201.5" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12" fill="#94a3b8" text-anchor="middle">upload</text></g><path d="M494,198 L540,198" fill="none" stroke="#94a3b8" stroke-width="2.4" marker-end="url(#arr-94a3b8)"/><g><rect x="485.55" y="186" width="62.9" height="22" rx="6" fill="#0a0f1c" stroke="#283449"/>
+    <text x="517" y="201.5" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12" fill="#94a3b8" text-anchor="middle">extract</text></g><path d="M740,198 L786,198" fill="none" stroke="#94a3b8" stroke-width="2.4" marker-end="url(#arr-94a3b8)"/><g><rect x="711.45" y="186" width="103.10000000000001" height="22" rx="6" fill="#0a0f1c" stroke="#283449"/>
+    <text x="763" y="201.5" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12" fill="#94a3b8" text-anchor="middle">blocker found</text></g><path d="M986,198 L1032,198" fill="none" stroke="#94a3b8" stroke-width="2.4" marker-end="url(#arr-94a3b8)"/><g><rect x="974.2" y="186" width="69.6" height="22" rx="6" fill="#0a0f1c" stroke="#283449"/>
+    <text x="1009" y="201.5" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12" fill="#94a3b8" text-anchor="middle">resolved</text></g><g>
+    <rect x="1032" y="392" width="200" height="56" rx="13" fill="#16213a" stroke="#6366f1" stroke-width="2"/>
+    <circle cx="1054" cy="420" r="6" fill="#6366f1"/>
+    <text x="1072" y="425" font-family="Consolas, 'DejaVu Sans Mono', Menlo, monospace" font-size="14" fill="#e2e8f0" font-weight="600">submitted</text>
+  </g><path d="M1132,226 L1132,392" fill="none" stroke="#94a3b8" stroke-width="2.4" marker-end="url(#arr-94a3b8)"/><g><rect x="1067.05" y="297" width="129.9" height="22" rx="6" fill="#0a0f1c" stroke="#283449"/>
+    <text x="1132" y="312.5" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12" fill="#94a3b8" text-anchor="middle">submit for review</text></g><g>
+    <rect x="240" y="312" width="200" height="56" rx="13" fill="#16213a" stroke="#10b981" stroke-width="2"/>
+    <circle cx="262" cy="340" r="6" fill="#10b981"/>
+    <text x="280" y="345" font-family="Consolas, 'DejaVu Sans Mono', Menlo, monospace" font-size="14" fill="#e2e8f0" font-weight="600">completed</text>
+  </g><g>
+    <rect x="540" y="312" width="200" height="56" rx="13" fill="#16213a" stroke="#10b981" stroke-width="2"/>
+    <circle cx="562" cy="340" r="6" fill="#10b981"/>
+    <text x="580" y="345" font-family="Consolas, 'DejaVu Sans Mono', Menlo, monospace" font-size="14" fill="#e2e8f0" font-weight="600">approved</text>
+  </g><g>
+    <rect x="540" y="432" width="200" height="56" rx="13" fill="#16213a" stroke="#f59e0b" stroke-width="2"/>
+    <circle cx="562" cy="460" r="6" fill="#f59e0b"/>
+    <text x="580" y="465" font-family="Consolas, 'DejaVu Sans Mono', Menlo, monospace" font-size="14" fill="#e2e8f0" font-weight="600">change_pending</text>
+  </g><g>
+    <rect x="540" y="552" width="200" height="56" rx="13" fill="#16213a" stroke="#f43f5e" stroke-width="2"/>
+    <circle cx="562" cy="580" r="6" fill="#f43f5e"/>
+    <text x="580" y="585" font-family="Consolas, 'DejaVu Sans Mono', Menlo, monospace" font-size="14" fill="#e2e8f0" font-weight="600">denied</text>
+  </g><path d="M1032,420 C 900,420 820,340 740,340" fill="none" stroke="#6366f1" stroke-width="2.4" marker-end="url(#arr-6366f1)"/><g><rect x="848.55" y="306" width="62.9" height="22" rx="6" fill="#0a0f1c" stroke="#283449"/>
+    <text x="880" y="321.5" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12" fill="#6366f1" text-anchor="middle">approve</text></g><path d="M1032,420 C 900,420 840,460 740,460" fill="none" stroke="#6366f1" stroke-width="2.4" marker-end="url(#arr-6366f1)"/><g><rect x="836.75" y="454" width="116.5" height="22" rx="6" fill="#0a0f1c" stroke="#283449"/>
+    <text x="895" y="469.5" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12" fill="#6366f1" text-anchor="middle">request changes</text></g><path d="M1032,420 C 900,452 820,580 740,580" fill="none" stroke="#6366f1" stroke-width="2.4" marker-end="url(#arr-6366f1)"/><g><rect x="858.6" y="546" width="42.8" height="22" rx="6" fill="#0a0f1c" stroke="#283449"/>
+    <text x="880" y="561.5" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12" fill="#6366f1" text-anchor="middle">deny</text></g><path d="M540,340 L440,340" fill="none" stroke="#10b981" stroke-width="2.4" marker-end="url(#arr-10b981)"/><g><rect x="455.2" y="328" width="69.6" height="22" rx="6" fill="#0a0f1c" stroke="#283449"/>
+    <text x="490" y="343.5" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12" fill="#10b981" text-anchor="middle">finalize</text></g><rect x="526" y="304" width="228" height="192" rx="16" fill="#8b5cf6" fill-opacity="0.06" stroke="#8b5cf6" stroke-opacity="0.4" stroke-dasharray="5 5"/><path d="M640,368 L640,432" fill="none" stroke="#8b5cf6" stroke-width="3.4" marker-end="url(#arr-8b5cf6)"/><g><rect x="595.15" y="388" width="89.7" height="22" rx="6" fill="#0a0f1c" stroke="#283449"/>
+    <text x="640" y="403.5" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12" fill="#8b5cf6" text-anchor="middle">re-review ★</text></g><path d="M740,472 C 880,582 1000,582 1132,448" fill="none" stroke="#f59e0b" stroke-width="2.4" stroke-dasharray="6 5" marker-end="url(#arr-f59e0b)"/><g><rect x="885.2" y="570" width="69.6" height="22" rx="6" fill="#0a0f1c" stroke="#283449"/>
+    <text x="920" y="585.5" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12" fill="#f59e0b" text-anchor="middle">resubmit</text></g><circle cx="54" cy="700" r="6" fill="#64748b"/><text x="68" y="705" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="13" fill="#94a3b8">draft</text><circle cx="144" cy="700" r="6" fill="#38bdf8"/><text x="158" y="705" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="13" fill="#94a3b8">in progress</text><circle cx="279.6" cy="700" r="6" fill="#f59e0b"/><text x="293.6" y="705" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="13" fill="#94a3b8">needs action</text><circle cx="422.8" cy="700" r="6" fill="#f43f5e"/><text x="436.8" y="705" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="13" fill="#94a3b8">blocked / denied</text><circle cx="596.4" cy="700" r="6" fill="#10b981"/><text x="610.4" y="705" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="13" fill="#94a3b8">ready / approved</text><circle cx="770" cy="700" r="6" fill="#6366f1"/><text x="784" y="705" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="13" fill="#94a3b8">in review</text><circle cx="890.4" cy="700" r="6" fill="#8b5cf6"/><text x="904.4" y="705" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="13" fill="#94a3b8">re-review ★</text><text x="48" y="732" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#64748b">★ approved → change_pending: an approved case reopens when approval-sensitive fields (employer, location, dates) change. Transitions validated server-side against CASE_STATUS_TRANSITIONS.</text>
+    <rect x="0" y="784" width="1280" height="36" fill="#0a0f1c"/>
+    <line x1="0" y1="784" x2="1280" y2="784" stroke="#283449"/>
+    <text x="28" y="807" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="13" fill="#64748b">VisaFlow · src/lib/cases/{requirements,status}.ts</text>
+    <text x="1252" y="807" font-family="Consolas, 'DejaVu Sans Mono', Menlo, monospace" font-size="13" fill="#6366f1" text-anchor="end">visaflow-requirements-engine</text>
+  </svg>

@@ -1,0 +1,44 @@
+
+stateDiagram-v2
+    direction LR
+
+    %% explicit, labeled start/end states (instead of the bare [*] UML markers)
+    state "document uploaded" as start
+    state "lifecycle complete" as done
+
+    start --> pending
+    pending --> processing: extract starts
+    processing --> succeeded: fields stored
+    processing --> failed: unreadable / error
+    failed --> processing: retry
+    processing --> processing: stale > 10 min → retry
+    failed --> succeeded: manual correction
+    succeeded --> done
+
+    note right of succeeded
+        Manual correction re-runs the
+        deterministic requirements evaluator
+    end note
+
+    note right of failed
+        Latest relevant document versions
+        gate case submission
+    end note
+
+    note left of pending
+        needs_document_reevaluation
+        is server-controlled
+    end note
+
+    classDef ok fill:#064e3b,stroke:#10b981,color:#d1fae5
+    classDef bad fill:#4c0519,stroke:#f43f5e,color:#fecdd3
+    classDef busy fill:#0c4a6e,stroke:#38bdf8,color:#e0f2fe
+    classDef idle fill:#1e293b,stroke:#64748b,color:#e2e8f0
+    classDef terminal fill:#020617,stroke:#475569,color:#94a3b8
+
+    class start idle
+    class done terminal
+    class succeeded ok
+    class failed bad
+    class processing busy
+    class pending idle
