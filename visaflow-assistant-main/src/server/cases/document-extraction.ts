@@ -10,13 +10,13 @@ export interface NormalizedExtractedFieldValue {
 
 export interface SuccessfulDocumentExtractionResult {
   extractedFields: NormalizedExtractedFieldValue[];
-  extractorId: typeof LOCAL_CASE_DOCUMENT_EXTRACTOR_ID;
+  extractorId: string;
   status: "succeeded";
 }
 
 export interface FailedDocumentExtractionResult {
   errorMessage: string;
-  extractorId: typeof LOCAL_CASE_DOCUMENT_EXTRACTOR_ID;
+  extractorId: string;
   status: "failed";
 }
 

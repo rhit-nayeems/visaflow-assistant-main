@@ -23,6 +23,7 @@ import { Route as AuthenticatedCasesNewRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedCasesCaseIdRouteImport } from './routes/_authenticated/cases/$caseId'
 import { Route as AuthenticatedReviewCasesIndexRouteImport } from './routes/_authenticated/review/cases/index'
 import { Route as AuthenticatedReviewCasesCaseIdRouteImport } from './routes/_authenticated/review/cases/$caseId'
+import { Route as AuthenticatedAdminReviewersRouteImport } from './routes/_authenticated/admin/reviewers'
 
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
@@ -96,6 +97,12 @@ const AuthenticatedReviewCasesCaseIdRoute =
     path: '/review/cases/$caseId',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedAdminReviewersRoute =
+  AuthenticatedAdminReviewersRouteImport.update({
+    id: '/admin/reviewers',
+    path: '/admin/reviewers',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -111,6 +118,7 @@ export interface FileRoutesByFullPath {
   '/cases/': typeof AuthenticatedCasesIndexRoute
   '/review/cases/$caseId': typeof AuthenticatedReviewCasesCaseIdRoute
   '/review/cases/': typeof AuthenticatedReviewCasesIndexRoute
+  '/admin/reviewers': typeof AuthenticatedAdminReviewersRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -126,6 +134,7 @@ export interface FileRoutesByTo {
   '/cases': typeof AuthenticatedCasesIndexRoute
   '/review/cases/$caseId': typeof AuthenticatedReviewCasesCaseIdRoute
   '/review/cases': typeof AuthenticatedReviewCasesIndexRoute
+  '/admin/reviewers': typeof AuthenticatedAdminReviewersRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -143,6 +152,7 @@ export interface FileRoutesById {
   '/_authenticated/cases/': typeof AuthenticatedCasesIndexRoute
   '/_authenticated/review/cases/$caseId': typeof AuthenticatedReviewCasesCaseIdRoute
   '/_authenticated/review/cases/': typeof AuthenticatedReviewCasesIndexRoute
+  '/_authenticated/admin/reviewers': typeof AuthenticatedAdminReviewersRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -160,6 +170,7 @@ export interface FileRouteTypes {
     | '/cases/'
     | '/review/cases/$caseId'
     | '/review/cases/'
+    | '/admin/reviewers'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -175,6 +186,7 @@ export interface FileRouteTypes {
     | '/cases'
     | '/review/cases/$caseId'
     | '/review/cases'
+    | '/admin/reviewers'
   id:
     | '__root__'
     | '/'
@@ -191,6 +203,7 @@ export interface FileRouteTypes {
     | '/_authenticated/cases/'
     | '/_authenticated/review/cases/$caseId'
     | '/_authenticated/review/cases/'
+    | '/_authenticated/admin/reviewers'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -303,6 +316,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedReviewCasesCaseIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/admin/reviewers': {
+      id: '/_authenticated/admin/reviewers'
+      path: '/admin/reviewers'
+      fullPath: '/admin/reviewers'
+      preLoaderRoute: typeof AuthenticatedAdminReviewersRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
   }
 }
 
@@ -314,6 +334,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedCasesIndexRoute: typeof AuthenticatedCasesIndexRoute
   AuthenticatedReviewCasesCaseIdRoute: typeof AuthenticatedReviewCasesCaseIdRoute
   AuthenticatedReviewCasesIndexRoute: typeof AuthenticatedReviewCasesIndexRoute
+  AuthenticatedAdminReviewersRoute: typeof AuthenticatedAdminReviewersRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
@@ -324,6 +345,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedCasesIndexRoute: AuthenticatedCasesIndexRoute,
   AuthenticatedReviewCasesCaseIdRoute: AuthenticatedReviewCasesCaseIdRoute,
   AuthenticatedReviewCasesIndexRoute: AuthenticatedReviewCasesIndexRoute,
+  AuthenticatedAdminReviewersRoute: AuthenticatedAdminReviewersRoute,
 }
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(

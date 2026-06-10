@@ -598,9 +598,54 @@ export type Database = {
         };
         Returns: boolean;
       };
+      assign_reviewer_to_school: {
+        Args: {
+          p_school_id: string;
+          p_user_id: string;
+        };
+        Returns: {
+          created_at: string;
+          id: string;
+          school_id: string;
+          user_id: string;
+        };
+      };
+      revoke_reviewer_from_school: {
+        Args: {
+          p_assignment_id: string;
+        };
+        Returns: boolean;
+      };
+      list_reviewer_assignments: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          assignment_id: string;
+          created_at: string;
+          email: string | null;
+          full_name: string | null;
+          school_id: string;
+          school_name: string;
+          user_id: string;
+        }[];
+      };
+      list_assignable_reviewers: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          email: string | null;
+          full_name: string | null;
+          user_id: string;
+        }[];
+      };
+      list_assignable_schools: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          id: string;
+          name: string;
+        }[];
+      };
     };
     Enums: {
-      app_role: "student" | "school_admin" | "advisor" | "employer";
+      app_role: "student" | "school_admin" | "advisor" | "employer" | "platform_admin";
       case_status:
         | "draft"
         | "missing_documents"
@@ -739,7 +784,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["student", "school_admin", "advisor", "employer"],
+      app_role: ["student", "school_admin", "advisor", "employer", "platform_admin"],
       case_status: [
         "draft",
         "missing_documents",

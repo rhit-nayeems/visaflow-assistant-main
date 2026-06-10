@@ -9,6 +9,7 @@ export interface AuthState {
   session: Session | null;
   roles: AppRole[];
   isSchoolAdmin: boolean;
+  isPlatformAdmin: boolean;
   isLoading: boolean;
   isAuthenticated: boolean;
 }
@@ -18,6 +19,7 @@ export const AuthContext = createContext<AuthState>({
   session: null,
   roles: [],
   isSchoolAdmin: false,
+  isPlatformAdmin: false,
   isLoading: true,
   isAuthenticated: false,
 });

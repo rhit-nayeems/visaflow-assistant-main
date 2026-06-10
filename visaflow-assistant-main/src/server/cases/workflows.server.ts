@@ -16,7 +16,7 @@ import {
   canRerunDeterministicEvaluation,
 } from "../../lib/cases/status.ts";
 import { getDocumentTypeLabel } from "../../lib/constants.ts";
-import { extractDocumentWithLocalStub } from "./document-extraction.ts";
+import { extractCaseDocument } from "./document-extraction-provider.ts";
 import { findOwnedCase, findOwnedCaseNote, loadOwnedCase } from "./authz.server.ts";
 import {
   writeCaseAuditLog,
@@ -852,7 +852,7 @@ const extractCaseDocumentAndMaybeReevaluate = async (
 
   try {
     const fileBuffer = await downloadCaseDocumentBuffer(context, document);
-    const extractionResult = await extractDocumentWithLocalStub({
+    const extractionResult = await extractCaseDocument({
       documentType: document.document_type,
       fileBuffer,
       fileName: document.file_name,

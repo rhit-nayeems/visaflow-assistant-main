@@ -9,14 +9,16 @@ import {
   Plus,
   ChevronLeft,
   ClipboardCheck,
+  ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { NotificationBell } from "./NotificationBell";
 
 export function AppSidebar() {
   const location = useLocation();
-  const { user, isSchoolAdmin } = useAuth();
+  const { user, isSchoolAdmin, isPlatformAdmin } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
 
   const navItems = [
@@ -24,6 +26,9 @@ export function AppSidebar() {
     { to: "/cases" as const, icon: FileText, label: "Cases" },
     ...(isSchoolAdmin
       ? [{ to: "/review/cases" as const, icon: ClipboardCheck, label: "Review Queue" }]
+      : []),
+    ...(isPlatformAdmin
+      ? [{ to: "/admin/reviewers" as const, icon: ShieldCheck, label: "Reviewer Admin" }]
       : []),
     { to: "/settings" as const, icon: Settings, label: "Settings" },
   ];
@@ -39,7 +44,14 @@ export function AppSidebar() {
         collapsed ? "w-16" : "w-56",
       )}
     >
-      <div className="flex h-14 items-center justify-between border-b px-3">
+      <div
+        className={cn(
+          "flex border-b px-3",
+          collapsed
+            ? "min-h-14 flex-col items-center gap-1 py-2"
+            : "h-14 items-center justify-between",
+        )}
+      >
         {!collapsed && (
           <Link to="/dashboard" className="flex items-center gap-2">
             <div className="flex h-7 w-7 items-center justify-center rounded-md gradient-hero">
@@ -48,12 +60,17 @@ export function AppSidebar() {
             <span className="text-sm font-semibold text-foreground">VisaFlow</span>
           </Link>
         )}
-        <button
-          onClick={() => setCollapsed(!collapsed)}
-          className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
-        >
-          <ChevronLeft className={cn("h-4 w-4 transition-transform", collapsed && "rotate-180")} />
-        </button>
+        <div className={cn("flex items-center gap-1", collapsed && "flex-col")}>
+          <NotificationBell />
+          <button
+            onClick={() => setCollapsed(!collapsed)}
+            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+          >
+            <ChevronLeft
+              className={cn("h-4 w-4 transition-transform", collapsed && "rotate-180")}
+            />
+          </button>
+        </div>
       </div>
 
       <div className="p-3">

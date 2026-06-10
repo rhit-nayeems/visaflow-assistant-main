@@ -69,6 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     session,
     roles,
     isSchoolAdmin: roles.includes("school_admin"),
+    isPlatformAdmin: roles.includes("platform_admin"),
     isLoading,
     isAuthenticated: !!session,
   };

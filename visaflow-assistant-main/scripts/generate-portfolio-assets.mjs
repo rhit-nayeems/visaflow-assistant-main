@@ -16,13 +16,25 @@ mkdirSync(OUT, { recursive: true });
 const DENSITY = 160; // ~2.2x raster scale for crisp PNGs
 
 const C = {
-  bg0: "#0a0f1c", bg1: "#0f172a",
-  card: "#16213a", card2: "#1c2942", panel: "#111a2e",
-  border: "#334155", borderSoft: "#283449",
-  text: "#e2e8f0", muted: "#94a3b8", faint: "#64748b",
-  indigo: "#6366f1", violet: "#8b5cf6", emerald: "#10b981",
-  amber: "#f59e0b", rose: "#f43f5e", blue: "#38bdf8", slate: "#64748b",
-  green: "#22c55e", cyan: "#22d3ee",
+  bg0: "#0a0f1c",
+  bg1: "#0f172a",
+  card: "#16213a",
+  card2: "#1c2942",
+  panel: "#111a2e",
+  border: "#334155",
+  borderSoft: "#283449",
+  text: "#e2e8f0",
+  muted: "#94a3b8",
+  faint: "#64748b",
+  indigo: "#6366f1",
+  violet: "#8b5cf6",
+  emerald: "#10b981",
+  amber: "#f59e0b",
+  rose: "#f43f5e",
+  blue: "#38bdf8",
+  slate: "#64748b",
+  green: "#22c55e",
+  cyan: "#22d3ee",
 };
 const FONT = "Segoe UI, Helvetica, Arial, sans-serif";
 const MONO = "Consolas, 'DejaVu Sans Mono', Menlo, monospace";
@@ -31,11 +43,22 @@ const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replac
 const nm = (c) => c.replace("#", "");
 
 // ---- shared fragments -------------------------------------------------------
-const ARROW_COLORS = [C.muted, C.indigo, C.violet, C.emerald, C.amber, C.rose, C.blue, C.slate, C.faint];
+const ARROW_COLORS = [
+  C.muted,
+  C.indigo,
+  C.violet,
+  C.emerald,
+  C.amber,
+  C.rose,
+  C.blue,
+  C.slate,
+  C.faint,
+];
 
 function defs(extra = "") {
   const markers = ARROW_COLORS.map(
-    (c) => `<marker id="arr-${nm(c)}" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="${c}"/></marker>`
+    (c) =>
+      `<marker id="arr-${nm(c)}" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="${c}"/></marker>`,
   ).join("");
   return `<defs>
     <linearGradient id="bgg" x1="0" y1="0" x2="0" y2="1">
@@ -97,7 +120,8 @@ async function renderPng(name, svg) {
 // 1. requirements-engine.svg  —  10-status case lifecycle
 // =============================================================================
 function requirementsEngine() {
-  const W = 1280, H = 820;
+  const W = 1280,
+    H = 820;
   let g = "";
   // section labels
   g += pill(48, 132, "1 · Student build + deterministic evaluation", C.blue);
@@ -115,43 +139,84 @@ function requirementsEngine() {
   r1.forEach(([x, l, c]) => (g += statusNode(x, r1y, l, c)));
   const r1labels = ["upload", "extract", "blocker found", "resolved"];
   for (let i = 0; i < 4; i++) {
-    const x1 = r1[i][0] + 200, x2 = r1[i + 1][0];
-    g += edge(`M${x1},${r1y + 28} L${x2},${r1y + 28}`, C.muted, { label: r1labels[i], lx: (x1 + x2) / 2, ly: r1y + 28 });
+    const x1 = r1[i][0] + 200,
+      x2 = r1[i + 1][0];
+    g += edge(`M${x1},${r1y + 28} L${x2},${r1y + 28}`, C.muted, {
+      label: r1labels[i],
+      lx: (x1 + x2) / 2,
+      ly: r1y + 28,
+    });
   }
 
   // Row 1 -> submitted (down)
   const subY = 392;
   g += statusNode(1032, subY, "submitted", C.indigo);
-  g += edge(`M1132,${r1y + 56} L1132,${subY}`, C.muted, { label: "submit for review", lx: 1132, ly: (r1y + 56 + subY) / 2 });
+  g += edge(`M1132,${r1y + 56} L1132,${subY}`, C.muted, {
+    label: "submit for review",
+    lx: 1132,
+    ly: (r1y + 56 + subY) / 2,
+  });
 
   // Outcomes column
   const ax = 540;
-  const aprY = 312, chgY = 432, denY = 552;
+  const aprY = 312,
+    chgY = 432,
+    denY = 552;
   g += statusNode(240, aprY, "completed", C.emerald);
   g += statusNode(ax, aprY, "approved", C.emerald);
   g += statusNode(ax, chgY, "change_pending", C.amber);
   g += statusNode(ax, denY, "denied", C.rose);
 
   // submitted branches
-  g += edge(`M1032,${subY + 28} C 900,${subY + 28} 820,${aprY + 28} ${ax + 200},${aprY + 28}`, C.indigo, { label: "approve", lx: 880, ly: aprY + 6 });
-  g += edge(`M1032,${subY + 28} C 900,${subY + 28} 840,${chgY + 28} ${ax + 200},${chgY + 28}`, C.indigo, { label: "request changes", lx: 895, ly: chgY + 34 });
-  g += edge(`M1032,${subY + 28} C 900,${subY + 60} 820,${denY + 28} ${ax + 200},${denY + 28}`, C.indigo, { label: "deny", lx: 880, ly: denY + 6 });
+  g += edge(
+    `M1032,${subY + 28} C 900,${subY + 28} 820,${aprY + 28} ${ax + 200},${aprY + 28}`,
+    C.indigo,
+    { label: "approve", lx: 880, ly: aprY + 6 },
+  );
+  g += edge(
+    `M1032,${subY + 28} C 900,${subY + 28} 840,${chgY + 28} ${ax + 200},${chgY + 28}`,
+    C.indigo,
+    { label: "request changes", lx: 895, ly: chgY + 34 },
+  );
+  g += edge(
+    `M1032,${subY + 28} C 900,${subY + 60} 820,${denY + 28} ${ax + 200},${denY + 28}`,
+    C.indigo,
+    { label: "deny", lx: 880, ly: denY + 6 },
+  );
 
   // approved -> completed
-  g += edge(`M${ax},${aprY + 28} L${240 + 200},${aprY + 28}`, C.emerald, { label: "finalize", lx: (ax + 440) / 2, ly: aprY + 28 });
+  g += edge(`M${ax},${aprY + 28} L${240 + 200},${aprY + 28}`, C.emerald, {
+    label: "finalize",
+    lx: (ax + 440) / 2,
+    ly: aprY + 28,
+  });
 
   // HIGHLIGHT: approved -> change_pending (re-review loop)
   g += `<rect x="${ax - 14}" y="${aprY - 8}" width="228" height="${chgY - aprY + 72}" rx="16" fill="${C.violet}" fill-opacity="0.06" stroke="${C.violet}" stroke-opacity="0.4" stroke-dasharray="5 5"/>`;
-  g += edge(`M${ax + 100},${aprY + 56} L${ax + 100},${chgY}`, C.violet, { width: 3.4, label: "re-review ★", lx: ax + 100, ly: (aprY + 56 + chgY) / 2, });
+  g += edge(`M${ax + 100},${aprY + 56} L${ax + 100},${chgY}`, C.violet, {
+    width: 3.4,
+    label: "re-review ★",
+    lx: ax + 100,
+    ly: (aprY + 56 + chgY) / 2,
+  });
 
   // change_pending -> submitted (resubmit loop)
-  g += edge(`M${ax + 200},${chgY + 40} C 880,${chgY + 150} 1000,${chgY + 150} 1132,${subY + 56}`, C.amber, { dash: "6 5", label: "resubmit", lx: 920, ly: chgY + 150 });
+  g += edge(
+    `M${ax + 200},${chgY + 40} C 880,${chgY + 150} 1000,${chgY + 150} 1132,${subY + 56}`,
+    C.amber,
+    { dash: "6 5", label: "resubmit", lx: 920, ly: chgY + 150 },
+  );
 
   // legend
   const ly = 700;
   const leg = [
-    ["draft", C.slate], ["in progress", C.blue], ["needs action", C.amber],
-    ["blocked / denied", C.rose], ["ready / approved", C.emerald], ["in review", C.indigo], ["re-review ★", C.violet],
+    ["draft", C.slate],
+    ["in progress", C.blue],
+    ["needs action", C.amber],
+    ["blocked / denied", C.rose],
+    ["ready / approved", C.emerald],
+    ["in review", C.indigo],
+    ["re-review ★", C.violet],
   ];
   let lx = 48;
   leg.forEach(([t, c]) => {
@@ -173,14 +238,18 @@ function requirementsEngine() {
 // 2. runtime-architecture.svg
 // =============================================================================
 function runtimeArchitecture() {
-  const W = 1320, H = 720;
+  const W = 1320,
+    H = 720;
   let g = "";
 
   function bigCard(x, y, w, h, { title, accent, lines = [], tag }) {
     let s = `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="16" fill="${C.card}" stroke="${C.border}" stroke-width="1.5"/>`;
     s += `<rect x="${x}" y="${y + 14}" width="4" height="${h - 28}" rx="2" fill="${accent}"/>`;
     s += `<text x="${x + 22}" y="${y + 34}" font-family="${FONT}" font-size="17" font-weight="700" fill="${C.text}">${esc(title)}</text>`;
-    lines.forEach((ln, i) => (s += `<text x="${x + 22}" y="${y + 60 + i * 22}" font-family="${FONT}" font-size="13.5" fill="${C.muted}">${esc(ln)}</text>`));
+    lines.forEach(
+      (ln, i) =>
+        (s += `<text x="${x + 22}" y="${y + 60 + i * 22}" font-family="${FONT}" font-size="13.5" fill="${C.muted}">${esc(ln)}</text>`),
+    );
     if (tag) s += pill(x + w - 14, y + 14, tag, accent, { anchor: "end" });
     return s;
   }
@@ -193,28 +262,82 @@ function runtimeArchitecture() {
   g += container(296, 176, 488, 252, "Cloudflare Workers · nodejs_compat", C.violet);
   g += container(776, 176, 508, 252, "Supabase (managed)", C.emerald);
 
-  const cy = 305, ch = 150, cardY = 230;
-  g += bigCard(40, cardY, 236, ch, { title: "TanStack Start", accent: C.indigo, tag: "browser", lines: ["React 19 · SSR + SPA", "TanStack Router", "TanStack Query"] });
-  g += bigCard(312, cardY, 216, ch, { title: "Server functions", accent: C.violet, lines: ["createServerFn (POST)", "dynamic-import", "workflow modules"] });
-  g += bigCard(552, cardY, 216, ch, { title: "Auth middleware", accent: C.blue, lines: ["verify Bearer JWT", "auth.getClaims(token)", "inject {supabase,userId}"] });
-  g += bigCard(792, cardY, 200, ch, { title: "Supabase client", accent: C.emerald, lines: ["user-scoped JWT", "RLS on every query"] });
+  const cy = 305,
+    ch = 150,
+    cardY = 230;
+  g += bigCard(40, cardY, 236, ch, {
+    title: "TanStack Start",
+    accent: C.indigo,
+    tag: "browser",
+    lines: ["React 19 · SSR + SPA", "TanStack Router", "TanStack Query"],
+  });
+  g += bigCard(312, cardY, 216, ch, {
+    title: "Server functions",
+    accent: C.violet,
+    lines: ["createServerFn (POST)", "dynamic-import", "workflow modules"],
+  });
+  g += bigCard(552, cardY, 216, ch, {
+    title: "Auth middleware",
+    accent: C.blue,
+    lines: ["verify Bearer JWT", "auth.getClaims(token)", "inject {supabase,userId}"],
+  });
+  g += bigCard(792, cardY, 200, ch, {
+    title: "Supabase client",
+    accent: C.emerald,
+    lines: ["user-scoped JWT", "RLS on every query"],
+  });
 
   // data stack
-  g += bigCard(1020, cardY, 264, 70, { title: "Postgres", accent: C.amber, lines: ["RLS policies + atomic RPCs"] });
-  g += bigCard(1020, cardY + 82, 264, 68, { title: "Storage", accent: C.slate, lines: ["bucket: case-documents"] });
+  g += bigCard(1020, cardY, 264, 70, {
+    title: "Postgres",
+    accent: C.amber,
+    lines: ["RLS policies + atomic RPCs"],
+  });
+  g += bigCard(1020, cardY + 82, 264, 68, {
+    title: "Storage",
+    accent: C.slate,
+    lines: ["bucket: case-documents"],
+  });
 
   // flow arrows
-  g += edge(`M276,${cy} L312,${cy}`, C.muted, { label: "Bearer access_token", lx: 294, ly: cy - 18, width: 2.6 });
+  g += edge(`M276,${cy} L312,${cy}`, C.muted, {
+    label: "Bearer access_token",
+    lx: 294,
+    ly: cy - 18,
+    width: 2.6,
+  });
   g += edge(`M528,${cy} L552,${cy}`, C.muted, { label: ".middleware([…])", lx: 540, ly: cy - 18 });
   g += edge(`M768,${cy} L792,${cy}`, C.muted, { label: "auth ctx", lx: 780, ly: cy - 18 });
-  g += edge(`M992,${cy - 10} L1020,${cardY + 35}`, C.emerald, { label: "SQL · RLS", lx: 1006, ly: cardY + 8 });
-  g += edge(`M992,${cy + 18} L1020,${cardY + 116}`, C.slate, { label: "download", lx: 1006, ly: cardY + 138 });
+  g += edge(`M992,${cy - 10} L1020,${cardY + 35}`, C.emerald, {
+    label: "SQL · RLS",
+    lx: 1006,
+    ly: cardY + 8,
+  });
+  g += edge(`M992,${cy + 18} L1020,${cardY + 116}`, C.slate, {
+    label: "download",
+    lx: 1006,
+    ly: cardY + 138,
+  });
 
   // supabase auth (session/roles)
   const authY = 470;
-  g += bigCard(792, authY, 200, 70, { title: "Supabase Auth", accent: C.cyan, lines: ["sessions · roles · claims"] });
-  g += edge(`M158,${cardY + ch} C 158,${authY + 80} 640,${authY + 110} 792,${authY + 40}`, C.cyan, { dash: "6 5", label: "session + roles (VITE_SUPABASE_*)", lx: 470, ly: authY + 96 });
-  g += edge(`M660,${cardY + ch} C 660,${authY} 760,${authY + 10} 838,${authY}`, C.blue, { dash: "6 5", label: "getClaims", lx: 740, ly: authY - 6 });
+  g += bigCard(792, authY, 200, 70, {
+    title: "Supabase Auth",
+    accent: C.cyan,
+    lines: ["sessions · roles · claims"],
+  });
+  g += edge(`M158,${cardY + ch} C 158,${authY + 80} 640,${authY + 110} 792,${authY + 40}`, C.cyan, {
+    dash: "6 5",
+    label: "session + roles (VITE_SUPABASE_*)",
+    lx: 470,
+    ly: authY + 96,
+  });
+  g += edge(`M660,${cardY + ch} C 660,${authY} 760,${authY + 10} 838,${authY}`, C.blue, {
+    dash: "6 5",
+    label: "getClaims",
+    lx: 740,
+    ly: authY - 6,
+  });
 
   // env note
   g += `<text x="40" y="${H - 60}" font-family="${MONO}" font-size="12.5" fill="${C.faint}">env: client → VITE_SUPABASE_*  ·  server → SUPABASE_URL + SUPABASE_PUBLISHABLE_KEY  ·  admin (RLS-bypass, server-only) → SUPABASE_SERVICE_ROLE_KEY</text>`;
@@ -232,7 +355,8 @@ function runtimeArchitecture() {
 // 3. reviewer-queue.png  —  admin review queue mock (tenant-scoped)
 // =============================================================================
 function reviewerQueue() {
-  const W = 1280, H = 800;
+  const W = 1280,
+    H = 800;
   const SB = 232;
   let g = "";
 
@@ -240,10 +364,17 @@ function reviewerQueue() {
   g += `<rect width="${W}" height="${H}" fill="${C.bg0}"/>`;
   g += `<rect x="0" y="0" width="${SB}" height="${H}" fill="${C.panel}"/><line x1="${SB}" y1="0" x2="${SB}" y2="${H}" stroke="${C.borderSoft}"/>`;
   g += `<circle cx="34" cy="40" r="11" fill="${C.indigo}"/><text x="54" y="46" font-family="${FONT}" font-size="19" font-weight="800" fill="${C.text}">VisaFlow</text>`;
-  const nav = [["Dashboard", false], ["My cases", false], ["Review queue", true], ["Schools", false], ["Settings", false]];
+  const nav = [
+    ["Dashboard", false],
+    ["My cases", false],
+    ["Review queue", true],
+    ["Schools", false],
+    ["Settings", false],
+  ];
   nav.forEach(([t, active], i) => {
     const y = 96 + i * 46;
-    if (active) g += `<rect x="12" y="${y - 24}" width="${SB - 24}" height="38" rx="9" fill="${C.indigo}" fill-opacity="0.16"/><rect x="12" y="${y - 24}" width="3" height="38" rx="2" fill="${C.indigo}"/>`;
+    if (active)
+      g += `<rect x="12" y="${y - 24}" width="${SB - 24}" height="38" rx="9" fill="${C.indigo}" fill-opacity="0.16"/><rect x="12" y="${y - 24}" width="3" height="38" rx="2" fill="${C.indigo}"/>`;
     g += `<text x="30" y="${y}" font-family="${FONT}" font-size="14.5" fill="${active ? C.text : C.muted}" font-weight="${active ? 700 : 500}">${esc(t)}</text>`;
   });
   g += `<line x1="16" y1="${H - 96}" x2="${SB - 16}" y2="${H - 96}" stroke="${C.borderSoft}"/>`;
@@ -267,13 +398,23 @@ function reviewerQueue() {
   g += pill(W - 250, by + 44, "Lakeside College", C.emerald);
 
   // table
-  const ty = 200, rowH = 70, tx = MX, tw = W - MX - 32;
+  const ty = 200,
+    rowH = 70,
+    tx = MX,
+    tw = W - MX - 32;
   const cols = [
-    ["Student", tx + 20], ["Employer", tx + 168], ["Role", tx + 330],
-    ["Start date", tx + 512], ["School", tx + 648], ["Status", tx + 812],
+    ["Student", tx + 20],
+    ["Employer", tx + 168],
+    ["Role", tx + 330],
+    ["Start date", tx + 512],
+    ["School", tx + 648],
+    ["Status", tx + 812],
   ];
   g += `<rect x="${tx}" y="${ty}" width="${tw}" height="44" rx="10" fill="${C.card2}"/>`;
-  cols.forEach(([t, x]) => (g += `<text x="${x}" y="${ty + 28}" font-family="${FONT}" font-size="12.5" font-weight="700" fill="${C.faint}" letter-spacing="0.5">${esc(t.toUpperCase())}</text>`));
+  cols.forEach(
+    ([t, x]) =>
+      (g += `<text x="${x}" y="${ty + 28}" font-family="${FONT}" font-size="12.5" font-weight="700" fill="${C.faint}" letter-spacing="0.5">${esc(t.toUpperCase())}</text>`),
+  );
   const rows = [
     ["A. Sharma", "Cloudgrid Inc.", "SW Engineer Intern", "Jun 15, 2026", "Northwood University"],
     ["M. Chen", "Brightlytics", "Data Analyst", "Jul 01, 2026", "Lakeside College"],
@@ -284,7 +425,8 @@ function reviewerQueue() {
   ];
   rows.forEach((r, i) => {
     const y = ty + 44 + i * rowH;
-    if (i % 2 === 1) g += `<rect x="${tx}" y="${y}" width="${tw}" height="${rowH}" fill="${C.card}" fill-opacity="0.4"/>`;
+    if (i % 2 === 1)
+      g += `<rect x="${tx}" y="${y}" width="${tw}" height="${rowH}" fill="${C.card}" fill-opacity="0.4"/>`;
     g += `<line x1="${tx}" y1="${y + rowH}" x2="${tx + tw}" y2="${y + rowH}" stroke="${C.borderSoft}" stroke-opacity="0.6"/>`;
     const ry = y + rowH / 2 + 5;
     g += `<text x="${cols[0][1]}" y="${ry}" font-family="${FONT}" font-size="14" font-weight="600" fill="${C.text}">${esc(r[0])}</text>`;
@@ -297,7 +439,8 @@ function reviewerQueue() {
   });
 
   // annotation callout
-  const cax = tx + 690, cay = ty + 44 + rows.length * rowH + 22;
+  const cax = tx + 690,
+    cay = ty + 44 + rows.length * rowH + 22;
   g += `<rect x="${tx}" y="${cay}" width="${tw}" height="58" rx="10" fill="${C.card}" stroke="${C.borderSoft}"/>`;
   g += `<text x="${tx + 18}" y="${cay + 24}" font-family="${FONT}" font-size="13" font-weight="700" fill="${C.amber}">Tenant isolation</text>`;
   g += `<text x="${tx + 18}" y="${cay + 44}" font-family="${FONT}" font-size="12.5" fill="${C.muted}">Cases from non-assigned schools never reach the queue — filtered by reviewer_school_assignments and re-checked by RLS. 6 of 6 rows belong to the two assigned schools.</text>`;
@@ -313,7 +456,8 @@ function reviewerQueue() {
 // 4. apply-reviewer-decision-rpc.png  —  annotated SQL
 // =============================================================================
 function rpcCode() {
-  const W = 1180, H = 980;
+  const W = 1180,
+    H = 980;
   const lines = [
     "CREATE OR REPLACE FUNCTION public.apply_reviewer_case_decision(",
     "  p_case_id          UUID,",
@@ -359,7 +503,11 @@ function rpcCode() {
     "END; $$;",
   ];
 
-  const KW = new Set("CREATE OR REPLACE FUNCTION RETURNS TABLE LANGUAGE SECURITY DEFINER SET AS DECLARE BEGIN END IF THEN NOT IN AND IS NULL UPDATE WHERE INSERT INTO VALUES RETURN QUERY SELECT RAISE EXCEPTION FOUND".split(" "));
+  const KW = new Set(
+    "CREATE OR REPLACE FUNCTION RETURNS TABLE LANGUAGE SECURITY DEFINER SET AS DECLARE BEGIN END IF THEN NOT IN AND IS NULL UPDATE WHERE INSERT INTO VALUES RETURN QUERY SELECT RAISE EXCEPTION FOUND".split(
+      " ",
+    ),
+  );
   const FUNCS = new Set(["uid", "has_role", "can_review_case", "nullif", "btrim", "coalesce"]);
   const TYPES = new Set(["uuid", "text", "case_status", "plpgsql"]);
   const FAINT = new Set(["public", "auth", "cases"]);
@@ -373,7 +521,9 @@ function rpcCode() {
       if (m[1]) out.push({ t: m[1], c: C.amber });
       else if (m[2]) out.push({ t: m[2], c: C.text });
       else if (m[3]) {
-        const w = m[3], u = w.toUpperCase(), l = w.toLowerCase();
+        const w = m[3],
+          u = w.toUpperCase(),
+          l = w.toLowerCase();
         let c = C.text;
         if (KW.has(u) && w === u) c = C.violet;
         else if (FUNCS.has(l)) c = C.blue;
@@ -385,8 +535,13 @@ function rpcCode() {
     return out;
   }
 
-  const winX = 40, winY = 44, winW = 760;
-  const barH = 40, codeTop = winY + barH + 22, lineH = 19.6, gutter = 46;
+  const winX = 40,
+    winY = 44,
+    winW = 760;
+  const barH = 40,
+    codeTop = winY + barH + 22,
+    lineH = 19.6,
+    gutter = 46;
   const winH = barH + 22 + lines.length * lineH + 16;
   let g = "";
   // window
@@ -399,20 +554,54 @@ function rpcCode() {
     const y = codeTop + i * lineH;
     g += `<text x="${winX + gutter - 10}" y="${y}" font-family="${MONO}" font-size="12" fill="${C.faint}" text-anchor="end">${i + 1}</text>`;
     let ts = "";
-    hl(ln).forEach((tok) => (ts += `<tspan fill="${tok.c}"${tok.i ? ' font-style="italic"' : ""}>${esc(tok.t)}</tspan>`));
+    hl(ln).forEach(
+      (tok) =>
+        (ts += `<tspan fill="${tok.c}"${tok.i ? ' font-style="italic"' : ""}>${esc(tok.t)}</tspan>`),
+    );
     g += `<text x="${winX + gutter}" y="${y}" font-family="${MONO}" font-size="13" xml:space="preserve">${ts}</text>`;
   });
 
   // annotations
-  const annX = winX + winW + 28, annW = W - annX - 28;
+  const annX = winX + winW + 28,
+    annW = W - annX - 28;
   const yOf = (idx) => codeTop + idx * lineH - 4;
   const anns = [
-    [6, "SECURITY DEFINER", "Runs with the function owner's rights so the write path is centralized; search_path is pinned to public to block injection.", C.violet],
-    [18, "Allowed targets only", "Hard-fails anything except approved / denied / change_pending — reviewers cannot push arbitrary statuses.", C.indigo],
-    [22, "Comment required", "deny and change_pending must carry a reviewer comment (normalized, non-empty).", C.amber],
-    [28, "Authorization at write time", "The status update only matches when can_review_case() passes — role + school assignment — and the case is still 'submitted'.", C.emerald],
-    [35, "One atomic transaction", "Status change + timeline event + audit log are written together; partial decisions are impossible.", C.blue],
-    [38, "Canonical result", "Returns {previous_status, next_status} so the server verifies the DB-owned outcome.", C.cyan],
+    [
+      6,
+      "SECURITY DEFINER",
+      "Runs with the function owner's rights so the write path is centralized; search_path is pinned to public to block injection.",
+      C.violet,
+    ],
+    [
+      18,
+      "Allowed targets only",
+      "Hard-fails anything except approved / denied / change_pending — reviewers cannot push arbitrary statuses.",
+      C.indigo,
+    ],
+    [
+      22,
+      "Comment required",
+      "deny and change_pending must carry a reviewer comment (normalized, non-empty).",
+      C.amber,
+    ],
+    [
+      28,
+      "Authorization at write time",
+      "The status update only matches when can_review_case() passes — role + school assignment — and the case is still 'submitted'.",
+      C.emerald,
+    ],
+    [
+      35,
+      "One atomic transaction",
+      "Status change + timeline event + audit log are written together; partial decisions are impossible.",
+      C.blue,
+    ],
+    [
+      38,
+      "Canonical result",
+      "Returns {previous_status, next_status} so the server verifies the DB-owned outcome.",
+      C.cyan,
+    ],
   ];
   anns.forEach(([idx, title, body, color], k) => {
     const ay = winY + 6 + k * ((winH - 20) / anns.length);
@@ -439,14 +628,18 @@ function rpcCode() {
 function wrapText(text, x, y, maxW, lh, color, size) {
   const words = text.split(" ");
   const cpl = Math.floor(maxW / (size * 0.52));
-  let line = "", out = "", row = 0;
+  let line = "",
+    out = "",
+    row = 0;
   for (const w of words) {
     if ((line + " " + w).trim().length > cpl) {
       out += `<text x="${x}" y="${y + row * lh}" font-family="${FONT}" font-size="${size}" fill="${color}">${esc(line.trim())}</text>`;
-      line = w; row++;
+      line = w;
+      row++;
     } else line += " " + w;
   }
-  if (line.trim()) out += `<text x="${x}" y="${y + row * lh}" font-family="${FONT}" font-size="${size}" fill="${color}">${esc(line.trim())}</text>`;
+  if (line.trim())
+    out += `<text x="${x}" y="${y + row * lh}" font-family="${FONT}" font-size="${size}" fill="${color}">${esc(line.trim())}</text>`;
   return out;
 }
 
@@ -454,38 +647,63 @@ function wrapText(text, x, y, maxW, lh, color, size) {
 // 5. document-extraction-state.png
 // =============================================================================
 function extractionState() {
-  const W = 1280, H = 760;
+  const W = 1280,
+    H = 760;
   let g = "";
 
   // ---- left: state machine ----
   g += `<text x="48" y="120" font-family="${FONT}" font-size="16" font-weight="700" fill="${C.text}">Extraction lifecycle (per document version)</text>`;
   const sn = (x, y, label, accent) => {
-    const w = 158, h = 52, cy = y + h / 2;
+    const w = 158,
+      h = 52,
+      cy = y + h / 2;
     return `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="12" fill="${C.card}" stroke="${accent}" stroke-width="2"/>
       <circle cx="${x + 20}" cy="${cy}" r="5.5" fill="${accent}"/>
       <text x="${x + 36}" y="${cy + 5}" font-family="${MONO}" font-size="13.5" fill="${C.text}" font-weight="600">${esc(label)}</text>`;
   };
-  const pend = [48, 320], proc = [300, 320], succ = [560, 200], fail = [560, 440];
+  const pend = [48, 320],
+    proc = [300, 320],
+    succ = [560, 200],
+    fail = [560, 440];
   g += sn(...pend, "pending", C.slate);
   g += sn(...proc, "processing", C.blue);
   g += sn(...succ, "succeeded", C.emerald);
   g += sn(...fail, "failed", C.rose);
 
   g += edge(`M206,346 L300,346`, C.muted, { label: "extract starts", lx: 250, ly: 332 });
-  g += edge(`M458,332 C 520,316 540,250 560,236`, C.emerald, { label: "fields stored", lx: 545, ly: 300 });
-  g += edge(`M458,360 C 520,400 540,452 560,466`, C.rose, { label: "unreadable / error", lx: 548, ly: 420 });
-  g += edge(`M560,486 C 470,540 360,512 379,372`, C.amber, { dash: "6 5", label: "retry", lx: 430, ly: 520 });
+  g += edge(`M458,332 C 520,316 540,250 560,236`, C.emerald, {
+    label: "fields stored",
+    lx: 545,
+    ly: 300,
+  });
+  g += edge(`M458,360 C 520,400 540,452 560,466`, C.rose, {
+    label: "unreadable / error",
+    lx: 548,
+    ly: 420,
+  });
+  g += edge(`M560,486 C 470,540 360,512 379,372`, C.amber, {
+    dash: "6 5",
+    label: "retry",
+    lx: 430,
+    ly: 520,
+  });
   // self-loop stale
   g += edge(`M345,320 C 335,266 425,266 415,320`, C.amber, { dash: "5 5" });
   g += edgeLabel(380, 258, "stale > 10 min → retry", C.amber);
   // manual correction highlight (failed -> succeeded)
   g += `<rect x="${succ[0] - 12}" y="${succ[1] - 10}" width="182" height="${fail[1] - succ[1] + 72}" rx="14" fill="${C.violet}" fill-opacity="0.06" stroke="${C.violet}" stroke-opacity="0.4" stroke-dasharray="5 5"/>`;
-  g += edge(`M${succ[0] + 79},${fail[1]} L${succ[0] + 79},${succ[1] + 52}`, C.violet, { width: 3.2, label: "manual correction ★", lx: succ[0] + 79, ly: (fail[1] + succ[1] + 52) / 2 });
+  g += edge(`M${succ[0] + 79},${fail[1]} L${succ[0] + 79},${succ[1] + 52}`, C.violet, {
+    width: 3.2,
+    label: "manual correction ★",
+    lx: succ[0] + 79,
+    ly: (fail[1] + succ[1] + 52) / 2,
+  });
 
   g += `<text x="48" y="690" font-family="${FONT}" font-size="12.5" fill="${C.faint}">★ Editing a blocker-level extracted field on the latest relevant version repairs extraction_status and re-runs the requirements engine — one atomic RPC.</text>`;
 
   // ---- right: UI panel ----
-  const px = 740, pw = 500;
+  const px = 740,
+    pw = 500;
   g += `<rect x="${px}" y="96" width="${pw}" height="560" rx="14" fill="${C.panel}" stroke="${C.border}"/>`;
   g += `<text x="${px + 24}" y="${134}" font-family="${FONT}" font-size="16" font-weight="700" fill="${C.text}">Case documents</text>`;
   const docs = [
@@ -500,7 +718,8 @@ function extractionState() {
     g += `<text x="${px + 32}" y="${y + 24}" font-family="${FONT}" font-size="14" font-weight="600" fill="${C.text}">${esc(d[0])}</text>`;
     g += `<text x="${px + 32}" y="${y + 44}" font-family="${MONO}" font-size="11.5" fill="${C.faint}">${esc(d[1])}</text>`;
     g += pill(px + pw - 130, y + 10, d[2], d[3]);
-    if (d[2] === "Failed") g += `<rect x="${px + pw - 130}" y="${y + 32}" width="60" height="20" rx="6" fill="${C.amber}" fill-opacity="0.16" stroke="${C.amber}"/><text x="${px + pw - 100}" y="${y + 46}" font-family="${FONT}" font-size="11" fill="${C.amber}" text-anchor="middle">Retry</text>`;
+    if (d[2] === "Failed")
+      g += `<rect x="${px + pw - 130}" y="${y + 32}" width="60" height="20" rx="6" fill="${C.amber}" fill-opacity="0.16" stroke="${C.amber}"/><text x="${px + pw - 100}" y="${y + 46}" font-family="${FONT}" font-size="11" fill="${C.amber}" text-anchor="middle">Retry</text>`;
   });
 
   // manual correction editor
@@ -526,15 +745,76 @@ function extractionState() {
 // =============================================================================
 function testCoverage() {
   const groups = [
-    ["src/lib/auth-redirect.test.ts", 7, ["buildAuthCallbackUrl defaults to the dashboard callback path", "sanitizeAuthNextPath rejects external redirect targets", "resolvePostAuthPath prefers recovery when the flow type is recovery"]],
-    ["src/integrations/supabase/url.test.ts", 3, ["normalizeSupabaseUrl strips the PostgREST suffix", "normalizeSupabaseUrl trims whitespace and trailing slashes"]],
-    ["src/server/cases/database-errors.test.ts", 12, ["maps missing RPC errors to an actionable migration message", "treats missing document extraction columns as schema drift", "preserves non-schema-drift database messages"]],
-    ["src/server/cases/document-extraction.test.ts", 2, ["local stub extraction normalizes supported text-pattern fields", "local stub extraction fails clearly when the file has no supported text"]],
-    ["src/server/cases/document-registration.test.ts", 4, ["retry with the same uploadRegistrationId returns the same document", "document registration delegates version allocation to the DB RPC"]],
-    ["src/server/cases/reviewer-read.server.test.ts", 2, ["reviewer assigned to school A only sees school A submitted cases", "reviewer detail returns scoped read-side data for assigned cases"]],
-    ["src/server/cases/workflows.server.test.ts", 32, ["submission moves a ready case into submitted and records history", "manual extracted-field save rolls back primary state when persistence fails", "reviewer decisions reject school admins not assigned to the case school"]],
+    [
+      "src/lib/auth-redirect.test.ts",
+      7,
+      [
+        "buildAuthCallbackUrl defaults to the dashboard callback path",
+        "sanitizeAuthNextPath rejects external redirect targets",
+        "resolvePostAuthPath prefers recovery when the flow type is recovery",
+      ],
+    ],
+    [
+      "src/integrations/supabase/url.test.ts",
+      3,
+      [
+        "normalizeSupabaseUrl strips the PostgREST suffix",
+        "normalizeSupabaseUrl trims whitespace and trailing slashes",
+      ],
+    ],
+    [
+      "src/server/cases/database-errors.test.ts",
+      12,
+      [
+        "maps missing RPC errors to an actionable migration message",
+        "treats missing document extraction columns as schema drift",
+        "preserves non-schema-drift database messages",
+      ],
+    ],
+    [
+      "src/server/cases/document-extraction.test.ts",
+      2,
+      [
+        "local stub extraction normalizes supported text-pattern fields",
+        "local stub extraction fails clearly when the file has no supported text",
+      ],
+    ],
+    [
+      "src/server/cases/document-registration.test.ts",
+      4,
+      [
+        "retry with the same uploadRegistrationId returns the same document",
+        "document registration delegates version allocation to the DB RPC",
+      ],
+    ],
+    [
+      "src/server/cases/reviewer-read.server.test.ts",
+      2,
+      [
+        "reviewer assigned to school A only sees school A submitted cases",
+        "reviewer detail returns scoped read-side data for assigned cases",
+      ],
+    ],
+    [
+      "src/server/cases/workflows.server.test.ts",
+      32,
+      [
+        "submission moves a ready case into submitted and records history",
+        "manual extracted-field save rolls back primary state when persistence fails",
+        "reviewer decisions reject school admins not assigned to the case school",
+      ],
+    ],
   ];
-  const summary = [["tests", "62", C.text], ["suites", "0", C.muted], ["pass", "62", C.green], ["fail", "0", C.green], ["cancelled", "0", C.muted], ["skipped", "0", C.muted], ["todo", "0", C.muted], ["duration_ms", "323.663", C.muted]];
+  const summary = [
+    ["tests", "62", C.text],
+    ["suites", "0", C.muted],
+    ["pass", "62", C.green],
+    ["fail", "0", C.green],
+    ["cancelled", "0", C.muted],
+    ["skipped", "0", C.muted],
+    ["todo", "0", C.muted],
+    ["duration_ms", "323.663", C.muted],
+  ];
 
   // build content lines
   const content = [];
@@ -549,9 +829,13 @@ function testCoverage() {
   content.push({ k: "blank" });
   summary.forEach(([key, val, c]) => content.push({ k: "sum", key, val, c }));
 
-  const lineH = 21, top = 96, padX = 28;
+  const lineH = 21,
+    top = 96,
+    padX = 28;
   const W = 1120;
-  const winX = 36, winY = 44, barH = 40;
+  const winX = 36,
+    winY = 44,
+    barH = 40;
   const winH = barH + 20 + content.length * lineH + 20;
   const H = winY + winH + 56;
 
