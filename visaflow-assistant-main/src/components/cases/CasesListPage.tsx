@@ -6,7 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { EmptyState } from "@/components/shared/EmptyState";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Plus, FileText, Search, Loader2 } from "lucide-react";
 import type { Tables } from "@/integrations/supabase/types";
 import type { CaseStatusKey } from "@/lib/constants";
@@ -84,7 +90,9 @@ export function CasesListPage() {
           <SelectContent>
             <SelectItem value="all">All statuses</SelectItem>
             {Object.entries(CASE_STATUSES).map(([key, config]) => (
-              <SelectItem key={key} value={key}>{config.label}</SelectItem>
+              <SelectItem key={key} value={key}>
+                {config.label}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -95,7 +103,11 @@ export function CasesListPage() {
         <EmptyState
           icon={<FileText className="h-5 w-5 text-muted-foreground" />}
           title={cases.length === 0 ? "No cases yet" : "No matching cases"}
-          description={cases.length === 0 ? "Create your first CPT case to get started." : "Try adjusting your filters."}
+          description={
+            cases.length === 0
+              ? "Create your first CPT case to get started."
+              : "Try adjusting your filters."
+          }
           action={
             cases.length === 0 ? (
               <Link to="/cases/new">

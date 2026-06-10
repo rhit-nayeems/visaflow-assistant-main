@@ -9,14 +9,22 @@ const colorMap = {
 
 type SeverityKey = keyof typeof REQUIREMENT_SEVERITIES;
 
-export function SeverityBadge({ severity, className }: { severity: SeverityKey; className?: string }) {
+export function SeverityBadge({
+  severity,
+  className,
+}: {
+  severity: SeverityKey;
+  className?: string;
+}) {
   const config = REQUIREMENT_SEVERITIES[severity];
   return (
-    <span className={cn(
-      "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium",
-      colorMap[config.color],
-      className
-    )}>
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium",
+        colorMap[config.color],
+        className,
+      )}
+    >
       {config.label}
     </span>
   );

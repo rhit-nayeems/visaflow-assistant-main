@@ -1,45 +1,43 @@
 import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
-import {
-  FileText,
-  Shield,
-  Clock,
-  CheckCircle,
-  ArrowRight,
-  BarChart3,
-  Bell,
-} from "lucide-react";
+import { FileText, Shield, Clock, CheckCircle, ArrowRight, BarChart3, Bell } from "lucide-react";
 
 const features = [
   {
     icon: FileText,
     title: "Document Tracking",
-    description: "Upload and manage offer letters, I-20s, and advisor approvals with version control and validation status.",
+    description:
+      "Upload and manage offer letters, I-20s, and advisor approvals with version control and validation status.",
   },
   {
     icon: Shield,
     title: "Requirement Validation",
-    description: "Automatically check your case against your school's CPT requirements. Clear blocker and warning explanations.",
+    description:
+      "Automatically check your case against your school's CPT requirements. Clear blocker and warning explanations.",
   },
   {
     icon: Clock,
     title: "Deadline Management",
-    description: "Never miss a deadline. Track lead times, submission windows, and program start dates in one view.",
+    description:
+      "Never miss a deadline. Track lead times, submission windows, and program start dates in one view.",
   },
   {
     icon: BarChart3,
     title: "Case Dashboard",
-    description: "See all your cases at a glance — status, blockers, progress, and what needs attention next.",
+    description:
+      "See all your cases at a glance — status, blockers, progress, and what needs attention next.",
   },
   {
     icon: Bell,
     title: "Smart Alerts",
-    description: "Get notified when requirements change, documents expire, or action is needed on your case.",
+    description:
+      "Get notified when requirements change, documents expire, or action is needed on your case.",
   },
   {
     icon: CheckCircle,
     title: "Submission Readiness",
-    description: "Know exactly when your case is ready for submission. No guesswork, no missed steps.",
+    description:
+      "Know exactly when your case is ready for submission. No guesswork, no missed steps.",
   },
 ];
 
@@ -57,7 +55,9 @@ export function LandingPage() {
           </div>
           <div className="flex items-center gap-2">
             <Link to="/login">
-              <Button variant="ghost" size="sm">Sign in</Button>
+              <Button variant="ghost" size="sm">
+                Sign in
+              </Button>
             </Link>
             <Link to="/signup">
               <Button size="sm">Get Started</Button>
@@ -78,7 +78,9 @@ export function LandingPage() {
           <span className="text-primary">under control.</span>
         </h1>
         <p className="mx-auto mt-5 max-w-2xl text-lg text-muted-foreground">
-          VisaFlow is a structured workflow platform for international students managing CPT authorization. Track requirements, upload documents, and know exactly when you're ready to submit.
+          VisaFlow is a structured workflow platform for international students managing CPT
+          authorization. Track requirements, upload documents, and know exactly when you're ready to
+          submit.
         </p>
         <div className="mt-8 flex items-center justify-center gap-3">
           <Link to="/signup">
@@ -100,7 +102,8 @@ export function LandingPage() {
           <div className="text-center mb-12">
             <h2 className="text-2xl font-bold text-foreground">Everything you need for CPT</h2>
             <p className="mt-2 text-muted-foreground">
-              Stop juggling spreadsheets and emails. VisaFlow gives you a clear, structured path to CPT authorization.
+              Stop juggling spreadsheets and emails. VisaFlow gives you a clear, structured path to
+              CPT authorization.
             </p>
           </div>
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
@@ -150,7 +153,8 @@ export function LandingPage() {
               <span className="text-xs font-medium text-muted-foreground">VisaFlow</span>
             </div>
             <p className="text-xs text-muted-foreground">
-              Not legal advice. VisaFlow helps organize your CPT workflow — consult your DSO for official guidance.
+              Not legal advice. VisaFlow helps organize your CPT workflow — consult your DSO for
+              official guidance.
             </p>
           </div>
         </div>

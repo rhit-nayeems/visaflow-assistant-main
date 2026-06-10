@@ -5,7 +5,13 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { AlertBanner } from "@/components/shared/AlertBanner";
 import { Loader2, Save } from "lucide-react";
 import type { Tables } from "@/integrations/supabase/types";
@@ -98,7 +104,11 @@ export function SettingsPage() {
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <Label className="text-xs">Full name</Label>
-              <Input value={fullName} onChange={(e) => setFullName(e.target.value)} className="mt-1" />
+              <Input
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                className="mt-1"
+              />
             </div>
             <div>
               <Label className="text-xs">Email</Label>
@@ -108,7 +118,12 @@ export function SettingsPage() {
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <Label className="text-xs">University</Label>
-              <Input value={universityName} onChange={(e) => setUniversityName(e.target.value)} className="mt-1" placeholder="MIT" />
+              <Input
+                value={universityName}
+                onChange={(e) => setUniversityName(e.target.value)}
+                className="mt-1"
+                placeholder="MIT"
+              />
             </div>
             <div>
               <Label className="text-xs">Degree level</Label>
@@ -127,7 +142,12 @@ export function SettingsPage() {
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <Label className="text-xs">Major</Label>
-              <Input value={major} onChange={(e) => setMajor(e.target.value)} className="mt-1" placeholder="Computer Science" />
+              <Input
+                value={major}
+                onChange={(e) => setMajor(e.target.value)}
+                className="mt-1"
+                placeholder="Computer Science"
+              />
             </div>
             <div>
               <Label className="text-xs">Visa type</Label>

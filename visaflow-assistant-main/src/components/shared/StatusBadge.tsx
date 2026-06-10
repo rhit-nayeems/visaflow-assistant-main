@@ -18,18 +18,20 @@ export function StatusBadge({ status, className }: { status: CaseStatusKey; clas
       className={cn(
         "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium",
         colorMap[config.color],
-        className
+        className,
       )}
     >
-      <span className={cn(
-        "h-1.5 w-1.5 rounded-full",
-        config.color === "success" && "bg-success",
-        config.color === "destructive" && "bg-destructive",
-        config.color === "warning" && "bg-warning",
-        config.color === "info" && "bg-info",
-        config.color === "primary" && "bg-primary",
-        config.color === "secondary" && "bg-muted-foreground",
-      )} />
+      <span
+        className={cn(
+          "h-1.5 w-1.5 rounded-full",
+          config.color === "success" && "bg-success",
+          config.color === "destructive" && "bg-destructive",
+          config.color === "warning" && "bg-warning",
+          config.color === "info" && "bg-info",
+          config.color === "primary" && "bg-primary",
+          config.color === "secondary" && "bg-muted-foreground",
+        )}
+      />
       {config.label}
     </span>
   );
