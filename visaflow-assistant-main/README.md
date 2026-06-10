@@ -58,6 +58,27 @@ Apply the SQL migrations in [`supabase/migrations/`](./supabase/migrations) to y
 project (e.g. with the Supabase CLI). These create the schema, RLS policies, the storage
 bucket, and the atomic RPCs the server functions depend on.
 
+### Bootstrapping a platform admin
+
+Reviewer assignments are managed by users with the `platform_admin` role (see the **Reviewer
+Admin** screen). A role can only attach to a real user, and users are created by signup, so the
+first platform admin is granted after that user signs up. Two options:
+
+- **Explicit (one command):** after signing up, run this once in the Supabase SQL editor:
+
+  ```sql
+  select public.grant_platform_admin('you@example.com');
+  ```
+
+- **Automatic:** configure the bootstrap email once, and the matching user is promoted on signup:
+
+  ```sql
+  alter database postgres set app.bootstrap_admin_email = 'you@example.com';
+  ```
+
+Both are idempotent. Ordinary users cannot self-promote — `grant_platform_admin` is not granted to
+`authenticated`, and the automatic path only matches the configured email.
+
 ### Run
 
 ```bash
