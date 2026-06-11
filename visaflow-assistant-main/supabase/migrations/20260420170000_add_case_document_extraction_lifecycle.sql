@@ -60,6 +60,11 @@ CREATE POLICY "Users can delete extracted fields of own docs" ON public.extracte
     )
   );
 
+-- This revision adds extraction columns to the return type. CREATE OR REPLACE cannot change a
+-- function's return type (SQLSTATE 42P13), so the prior definition must be dropped first for the
+-- migration chain to apply cleanly on a fresh database.
+DROP FUNCTION IF EXISTS public.register_case_document(UUID, TEXT, TEXT, TEXT, TEXT);
+
 CREATE OR REPLACE FUNCTION public.register_case_document(
   p_case_id UUID,
   p_document_type TEXT,
