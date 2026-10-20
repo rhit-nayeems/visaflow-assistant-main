@@ -1,5 +1,10 @@
 # VisaFlow
 
+Documentation reviewed: 2026-10-20 against main at 71fa5b1. Commands below run from
+visaflow-assistant-main/, not the repository root. Student CPT is the v1 scope; existing
+reviewer/admin and optional extraction features are extensions. See PROJECT_STATUS.md
+for committed behavior, unpublished local work, and live verification limits.
+
 A CPT (Curricular Practical Training) workflow and case-management platform for
 international students and their school reviewers. Students assemble a case (employment
 details + supporting documents), a **deterministic requirements engine** derives the case
@@ -37,20 +42,20 @@ npm install
 
 ### Configure environment
 
-Copy the example file and fill in your Supabase values:
+For a fresh environment, copy the example and fill in matching browser/server Supabase values. Preserve an existing configuration; use the actual local Vite origin for auth redirects:
 
 ```bash
 cp .env.example .env
 ```
 
-| Variable | Used by | Notes |
-| --- | --- | --- |
-| `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY` | Browser client | Build-time inlined |
-| `VITE_AUTH_REDIRECT_ORIGIN`, `APP_URL` | Auth redirects | |
-| `SUPABASE_URL` / `SUPABASE_PUBLISHABLE_KEY` | Server (auth middleware) | RLS applies |
-| `SUPABASE_SERVICE_ROLE_KEY` | Server admin client (optional) | **Bypasses RLS — server-only** |
-| `ANTHROPIC_API_KEY` | Document extraction (optional) | Enables Claude-powered extraction (native PDF / image parsing, text fallback); falls back to the local stub when unset |
-| `ANTHROPIC_EXTRACTION_MODEL` | Document extraction (optional) | Overrides the model (default `claude-haiku-4-5`) |
+| Variable                                              | Used by                        | Notes                                                                                                                  |
+| ----------------------------------------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY` | Browser client                 | Build-time inlined                                                                                                     |
+| `VITE_AUTH_REDIRECT_ORIGIN`, `APP_URL`                | Auth redirects                 |                                                                                                                        |
+| `SUPABASE_URL` / `SUPABASE_PUBLISHABLE_KEY`           | Server (auth middleware)       | RLS applies                                                                                                            |
+| `SUPABASE_SERVICE_ROLE_KEY`                           | Server admin client (optional) | **Bypasses RLS — server-only**                                                                                         |
+| `ANTHROPIC_API_KEY`                                   | Document extraction (optional) | Enables Claude-powered extraction (native PDF / image parsing, text fallback); falls back to the local stub when unset |
+| `ANTHROPIC_EXTRACTION_MODEL`                          | Document extraction (optional) | Overrides the model (default `claude-haiku-4-5`)                                                                       |
 
 ### Database
 
@@ -87,17 +92,17 @@ npm run dev        # start the Vite dev server
 
 ## Scripts
 
-| Script | Description |
-| --- | --- |
-| `npm run dev` | Start the dev server |
-| `npm run build` | Production build + type-check (`vite build && tsc --noEmit`) |
-| `npm run preview` | Preview the production build |
-| `npm run typecheck` | Type-check only (`tsc --noEmit`) |
-| `npm test` | Run the full test suite (Node test runner) |
-| `npm run test:cases` | Run only the `src/server/cases` suite |
-| `npm run lint` | ESLint |
-| `npm run format` | Prettier (write) |
-| `npm run deploy` | Build and deploy to Cloudflare Workers |
+| Script               | Description                                                  |
+| -------------------- | ------------------------------------------------------------ |
+| `npm run dev`        | Start the dev server                                         |
+| `npm run build`      | Production build + type-check (`vite build && tsc --noEmit`) |
+| `npm run preview`    | Preview the production build                                 |
+| `npm run typecheck`  | Type-check only (`tsc --noEmit`)                             |
+| `npm test`           | Run the full test suite (Node test runner)                   |
+| `npm run test:cases` | Run only the `src/server/cases` suite                        |
+| `npm run lint`       | ESLint                                                       |
+| `npm run format`     | Prettier (write)                                             |
+| `npm run deploy`     | Build and deploy to Cloudflare Workers                       |
 
 ## Testing
 
@@ -111,6 +116,10 @@ Coverage focuses on the server-side domain logic: the requirements engine and st
 transitions, document registration/extraction lifecycle, manual extracted-field review
 (including atomic-RPC rollback), reviewer decisions and school-scoping, database-error
 normalization, and auth-redirect/URL helpers.
+
+Current main has 87 passing tests (2026-10-20). Tests mock Supabase/provider boundaries;
+they do not apply SQL migrations or run Auth/Storage services. There is no test:database
+script or browser/component suite in main. See REPO_AUDIT.md for verification details.
 
 ## Project structure
 
@@ -131,6 +140,10 @@ The app targets Cloudflare Workers (see [`wrangler.jsonc`](./wrangler.jsonc)):
 ```bash
 npm run deploy
 ```
+
+See [DEPLOY-CLOUDFLARE.md](./DEPLOY-CLOUDFLARE.md) for build-time versus runtime
+settings, redirect configuration, and the post-deployment checklist. The service-role
+helper is unused by application flows; its key is optional and server-only.
 
 ## CI
 

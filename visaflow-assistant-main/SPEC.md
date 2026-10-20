@@ -1,13 +1,17 @@
 # SPEC.md
 
 ## Product name
+
 VisaFlow
 
 ## One-line summary
+
 VisaFlow is a CPT workflow assistant for international students that manages cases, requirements, documents, deadlines, and approval progress in a structured way.
 
 ## Problem
+
 International students often manage CPT through scattered school pages, PDFs, emails, advisor instructions, and manual reminders. That leads to:
+
 - incomplete offer letters
 - missed steps
 - deadline risk
@@ -15,9 +19,11 @@ International students often manage CPT through scattered school pages, PDFs, em
 - poor visibility into application readiness
 
 ## Product goal
+
 Turn CPT into a structured workflow system instead of an informal checklist process.
 
 The app should help students:
+
 - create and track a CPT case
 - understand what is missing
 - see blockers vs warnings
@@ -27,21 +33,27 @@ The app should help students:
 - maintain a clear history of changes
 
 ## Primary user
+
 - Student
 
 ## Future users
+
 These may be added later, but are not part of v1:
+
 - School admin / international office
 - Academic advisor
 - Employer contact
 
 ## V1 scope
+
 V1 supports:
+
 - CPT only
 - one school template initially
 - one primary user role: student
 
 ### V1 features
+
 - Authentication
 - Dashboard
 - CPT cases list
@@ -57,6 +69,7 @@ V1 supports:
 - Change-triggered revalidation for key fields
 
 ## Out of scope for V1
+
 - OPT
 - STEM OPT
 - SEVIS integration
@@ -70,6 +83,7 @@ V1 supports:
 - multi-tenant enterprise administration
 
 ## Product principles
+
 1. This is a workflow product, not a generic productivity app.
 2. Users should always know what to do next.
 3. Deterministic rules should drive readiness and status.
@@ -78,6 +92,7 @@ V1 supports:
 6. Important changes should be visible in history.
 
 ## Core entities
+
 - profiles
 - schools
 - school_templates
@@ -90,9 +105,11 @@ V1 supports:
 - audit_logs
 
 ## Case statuses
+
 The workflow uses structured statuses, not loose tags.
 
 Allowed statuses:
+
 - `draft`
 - `missing_documents`
 - `in_progress`
@@ -105,6 +122,7 @@ Allowed statuses:
 - `completed`
 
 ## Core business rules
+
 1. A case becomes `ready_for_submission` only when all blocker requirements are satisfied.
 2. Missing required offer-letter fields create blocker requirements.
 3. Warnings and blockers must be tracked separately.
@@ -119,7 +137,9 @@ Allowed statuses:
    - next recommended action
 
 ## Default CPT template behavior
+
 The initial default CPT school template should support configurable requirements such as:
+
 - required offer letter
 - required job title
 - required job duties
@@ -130,7 +150,9 @@ The initial default CPT school template should support configurable requirements
 - lead-time warning days
 
 ## Case lifecycle expectations
+
 A typical case flow in v1 should look like:
+
 - user creates case
 - user fills internship details
 - user uploads offer letter
@@ -142,7 +164,9 @@ A typical case flow in v1 should look like:
 - if approval-sensitive fields change after approval, case becomes `change_pending`
 
 ## Document handling expectations
+
 V1 should support:
+
 - document upload
 - document record creation
 - file metadata storage
@@ -154,7 +178,9 @@ V1 should support:
 V1 should not claim real document intelligence if it is still mocked.
 
 ## Dashboard expectations
+
 The dashboard should surface:
+
 - active CPT cases
 - blocked cases
 - upcoming deadlines
@@ -163,6 +189,7 @@ The dashboard should surface:
 - important alerts
 
 ## Acceptance criteria
+
 The following behaviors must be true for v1:
 
 1. A user can create a CPT case.
@@ -177,9 +204,20 @@ The following behaviors must be true for v1:
 10. The app remains clean, polished, and demoable.
 
 ## Non-goals
+
 This product does not:
+
 - make legal determinations
 - replace a DSO
 - file government forms
 - guarantee immigration compliance
 - provide official authorization
+
+## Implementation status boundary (2026-10-20)
+
+This document defines the intended student CPT v1 contract, not a claim that every
+acceptance criterion is complete. Main includes reviewer/admin and optional Anthropic
+extraction extensions; they do not expand v1 scope. In main at 71fa5b1, sensitive-change
+helpers exist, but the dedicated approved-case edit/revalidation flow is still unpublished
+local work. See [PROJECT_STATUS.md](./PROJECT_STATUS.md) and [TASKS.md](./TASKS.md)
+for implementation gaps and verification limits.

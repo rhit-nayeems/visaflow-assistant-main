@@ -1,18 +1,23 @@
 # VisaFlow — System Architecture
 
-_Last updated: 2026-06-09_
+_Last updated: 2026-10-20_
 
 > Comprehensive architecture reference for VisaFlow, expressed primarily through Mermaid
 > diagrams. It reflects the **current** state of `main`. Pair this with
 > [`PROJECT_STATUS.md`](./PROJECT_STATUS.md) for status, risks, and gaps.
 
 **Conventions**
+
 - Paths are relative to the application root (the inner `visaflow-assistant-main/`).
 - "Server function" = a `createServerFn` POST endpoint in `server/cases/actions.ts`.
 - "RPC" = a Postgres function invoked via `supabase.rpc(...)`.
 - All Mermaid blocks are standard GitHub‑flavored Mermaid.
 
 ---
+
+Reviewed against committed main at 71fa5b1. Student CPT remains the v1 contract; existing
+reviewer/admin and optional extraction code are extensions. Unpublished local editor,
+stronger letter-field rules, and PostgreSQL tests are excluded. See PROJECT_STATUS.md.
 
 ## 1. System context
 
@@ -84,6 +89,7 @@ graph LR
 ```
 
 **Build & deploy chain**
+
 - `vite build && tsc --noEmit` → `wrangler deploy`.
 - Vite plugins: `@cloudflare/vite-plugin`, `tanstackStart`, `react`, `tailwindcss`,
   `vite-tsconfig-paths` (`@/*` alias).
@@ -203,6 +209,7 @@ flowchart TD
 ```
 
 **Key points**
+
 - The request‑scoped Supabase client forwards the user JWT, so **every query the
   handler makes is RLS‑constrained** even before explicit `.eq("user_id", ...)` filters.
 - Reviewer writes are restricted to the `apply_reviewer_case_decision` RPC (no direct
@@ -222,7 +229,7 @@ sequenceDiagram
     participant MW as requireSupabaseAuth
     participant W as workflows.server.ts
     participant RPC as register_case_document (RPC)
-    participant EX as extractDocumentWithLocalStub
+    participant EX as extractCaseDocument (selected provider)
     participant DB as Postgres
 
     S->>ST: Upload file to {userId}/{caseId}/{regId}/...
@@ -366,8 +373,9 @@ stateDiagram-v2
 ```
 
 **Notes**
+
 - Student‑driven, deterministic states (`draft, missing_documents, in_progress,
-  blocked, ready_for_submission, change_pending`) are re‑evaluable
+blocked, ready_for_submission, change_pending`) are re‑evaluable
   (`DETERMINISTIC_REEVALUATION_STATUSES`).
 - `submitted → approved|denied|change_pending` only via the reviewer RPC.
 - Editing approval‑sensitive fields (`employer_name`, `work_location`, `start_date`,
@@ -407,10 +415,12 @@ stateDiagram-v2
     end note
 ```
 
-> Extraction itself is a **local text‑pattern stub** (`extractDocumentWithLocalStub`):
-> regex alias matching over decoded file bytes, fixed confidence 0.35, date
-> normalization to `YYYY-MM-DD`. No production OCR/AI. Binary/scanned files without
-> readable text fail.
+> Extraction is selected in server/cases/document-extraction-provider.ts. Without
+> ANTHROPIC_API_KEY, the local text-pattern stub uses regex aliases, confidence 0.35,
+> and date normalization; it does not provide real OCR for binary/scanned documents.
+> With a key, the optional Anthropic Messages provider sends native PDF/image blocks or
+> text and requests structured fields. ANTHROPIC_EXTRACTION_MODEL overrides the code
+> default claude-haiku-4-5. Provider tests mock HTTP responses, not live extraction.
 
 ---
 
@@ -580,7 +590,8 @@ erDiagram
 ```
 
 **Enums**
-- `app_role`: `student | school_admin | advisor | employer`
+
+- `app_role`: `student | school_admin | advisor | employer | platform_admin`
 - `case_status`: 10 values (see §8)
 - `requirement_severity`: `blocker | warning | info`
 - `requirement_status`: `pending | met | not_met | waived`
@@ -626,23 +637,54 @@ projects state in memory, validates, then delegates the commit to the RPC.
 
 ## 13. Cross‑cutting concerns
 
-| Concern | Where handled |
-|---------|---------------|
-| AuthN (token validation) | `integrations/supabase/auth-middleware.ts` |
-| AuthZ (ownership/scope) | `server/cases/authz.server.ts` + RLS + RPC checks |
-| Input validation | `server/cases/validation.ts` (hand‑written) |
-| Error normalization | `server/cases/database-errors.ts` |
-| Audit / timeline / status history | `server/cases/history.server.ts` (best‑effort writes) |
-| Shared business rules | `src/lib/cases/*` (pure, client + server) |
-| UI status/labels | `src/lib/constants.ts` |
-| Type safety | `integrations/supabase/types.ts` (generated) + strict TS |
+| Concern                           | Where handled                                            |
+| --------------------------------- | -------------------------------------------------------- |
+| AuthN (token validation)          | `integrations/supabase/auth-middleware.ts`               |
+| AuthZ (ownership/scope)           | `server/cases/authz.server.ts` + RLS + RPC checks        |
+| Input validation                  | `server/cases/validation.ts` (hand‑written)              |
+| Error normalization               | `server/cases/database-errors.ts`                        |
+| Audit / timeline / status history | `server/cases/history.server.ts` (best‑effort writes)    |
+| Shared business rules             | `src/lib/cases/*` (pure, client + server)                |
+| UI status/labels                  | `src/lib/constants.ts`                                   |
+| Type safety                       | `integrations/supabase/types.ts` (generated) + strict TS |
 
 > "Best‑effort" history writes are wrapped so a logging failure does not abort the
 > primary mutation.
 
 ---
 
-## 14. Architectural principles observed
+## 14. Existing admin and notification extensions
+
+routes/\_authenticated/admin/reviewers.tsx renders ReviewerAdminPage.
+The three POST server functions in server/admin/actions.ts load assignment data,
+assign reviewers, and revoke assignments through reviewer-admin.server.ts.
+They require platform_admin; database RPCs enforce authorization and persist assignment
+changes. The bootstrap migration grants the first admin via a privileged SQL call or a
+configured signup email. See README.md for setup.
+
+20260609120000_case_status_change_notifications.sql adds status-triggered notifications.
+hooks/use-notifications.ts loads up to 50 user-scoped records, marks them read, and refreshes
+through Realtime, window focus, and a 60-second polling fallback.
+components/layout/NotificationBell.tsx displays them. No email or expiry scheduler exists.
+
+## 15. Verification and missing edit flow
+
+npm test runs all 11 explicitly listed test files, including auth/URL, notifications,
+reviewer assignments/admin, provider, and case workflows. npm run test:cases is a subset.
+CI runs lint, typecheck, and the full suite. Tests mock Supabase/provider calls; main has
+no PostgreSQL migration test script or browser/component suite.
+
+The state graph above describes allowed transitions, not a guarantee every edge has a
+product action. status.ts detects approved sensitive-field changes, but main has no
+dedicated case-details edit action or atomic edit/revalidation RPC. Default template
+employer/title/dates are case-field requirements; only job duties is an extracted-letter
+field blocker. Stronger letter checks and the edit workflow remain unpublished local work.
+
+Reviewer decision history is written atomically inside its RPC. Some student/extraction
+history still uses best-effort helpers; the history table above describes those helpers,
+not every history write. Dashboard counts/deadlines remain in the page component.
+
+## 16. Architectural principles observed
 
 1. **Server is the source of truth.** The client re‑uses the same pure logic
    (`src/lib/cases/*`) for responsive UX, but the server re‑computes and persists.
@@ -656,11 +698,11 @@ projects state in memory, validates, then delegates the commit to the RPC.
    should be regenerated, not hand‑edited.
 
 For known risks, fragile areas, gaps, and open questions, see
-[`PROJECT_STATUS.md`](./PROJECT_STATUS.md) §13–15.
+[`PROJECT_STATUS.md`](./PROJECT_STATUS.md) and REPO_AUDIT.md.
 
 ---
 
-_Generated from a read‑only inspection of the codebase on 2026-06-09. Diagrams reflect
+_Generated from a read‑only inspection of the codebase on 2026-10-20. Diagrams reflect
 code paths in `src/server/cases/`, `src/lib/cases/`, `src/integrations/supabase/`, and
 `supabase/migrations/`. Where the database column type is looser than the app‑level
 constraint (e.g. `extraction_status` is `string` in generated types), the app‑level

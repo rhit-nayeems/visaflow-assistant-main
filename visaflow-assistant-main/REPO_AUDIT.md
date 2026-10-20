@@ -1,30 +1,59 @@
-﻿# Current Repo Audit
+# VisaFlow repository audit
 
-## Product Fit
+Reviewed: 2026-10-20. Source baseline: main at 71fa5b1.
+This audit covers committed source and this documentation update. Unpublished local code
+is described separately in [PROJECT_STATUS.md](./PROJECT_STATUS.md).
 
-- The repo is aligned to a CPT workflow product for students, not a generic checklist or chatbot.
-- The current UI already covers the v1 page structure: landing, auth, dashboard, cases list, create flow, case detail, and settings.
+## Implemented behavior
 
-## What Is Real
+- Auth forms, callback/recovery handling, protected app shell, profile/settings, and RLS-backed reads.
+- Authenticated server mutations in src/server/cases/, with ownership checks, input validation,
+  and normalized database errors.
+- Default school/CPT template seed, deterministic evaluator, separate blockers and warnings,
+  next-action guidance, and controlled status transitions.
+- Private Storage upload integration, idempotent version registration, extraction lifecycle,
+  latest-version manual review, retry/stale-processing handling, and submission guards.
+- Atomic manual-review/reevaluation and reviewer decision RPCs with reviewer school scope checks.
+- Platform-admin reviewer management/bootstrap and case-status notifications.
+- Optional Anthropic PDF/image/text extraction; local text-pattern stub when no key is set.
 
-- Supabase email/password auth is wired in the client.
-- The database schema includes profiles, schools, school templates, cases, documents, extracted fields, requirements, timeline events, notifications, audit logs, and notes.
-- Cases, profile updates, notes, documents, and timeline events are using real Supabase reads and writes.
-- Storage uploads are wired to the `case-documents` bucket.
+## Verification
 
-## What Was Incomplete Before This Pass
+Verified on 2026-10-20 in a clean dependency installation from main at 71fa5b1:
 
-- No default school or CPT template seed data existed, so the create-case flow had no selectable school/template records.
-- Requirement rows were generated from UI code with generic pending states instead of a central deterministic evaluator.
-- The `case_requirements` table was missing insert/delete policies, so requirement writes could fail under RLS.
-- Dashboard blocker/ready counts were derived from raw case statuses instead of reusable requirement summaries.
-- Status transition rules were hardcoded in UI logic instead of a shared module.
-- Audit log UI existed, but status changes were not being written there.
-- Starter-generator-specific auth/build references were still present in the repo.
+- npm test: 87 passed, zero failed, across 11 explicitly listed files.
+- npm run lint: zero errors; seven existing Fast Refresh warnings.
+- npm run build: client/server production build and TypeScript passed. Vite reports
+  a client chunk above 500 kB; the local Node runtime reports a module API deprecation.
+- Local verification used Node.js 26.8.1/npm 12.0.2. CI is configured for Node.js 24.
+- Build URL/key settings were placeholders; this is compilation evidence, not backend connectivity.
+- No dependency audit, live backend/provider, hosted migration, or browser checks were run.
 
-## Still Mocked Or Deferred
+## Gaps and limits
 
-- OCR/document parsing is still placeholder-only. Extracted fields can be stored and displayed, but no real parser populates them.
-- There is still no server-side case mutation layer; writes happen directly from the client through Supabase.
-- Approval-sensitive change revalidation logic is centralized, but there is not yet a dedicated case-edit flow that exercises it.
-- Protected routing is enforced in the app shell, but there is not yet a server-side page loader strategy for all authenticated routes.
+- Sensitive-change detection exists in src/lib/cases/status.ts, but no committed case-details
+  editor or atomic approved-edit workflow calls it. The corresponding v1 acceptance check is open.
+- Main's default template does not require employer/title/dates to be extracted from the
+  offer letter; those are case-field checks. Job duties is an extracted-field blocker.
+- Dashboard counts/deadlines are computed in the page; failed data reads can appear empty.
+- History is not uniformly atomic: reviewer decisions write history inside their RPC,
+  while some student/extraction history uses best-effort application writes.
+- Tests mock Supabase/provider boundaries. There is no committed PostgreSQL migration suite
+  or frontend browser/component test suite.
+- Hosted migration history, Auth/Storage, optional provider credentials, and authenticated
+  page flows were not checked here. Historical deployment/account observations are dated
+  in PROJECT_STATUS.md rather than asserted as current status.
+
+## Database and setup
+
+All 18 migrations live in supabase/migrations/, ending with the platform-admin bootstrap.
+The extraction migration explicitly drops the earlier document-registration function before
+changing its return type. Apply the complete chain to the intended backend and regenerate
+src/integrations/supabase/types.ts when the hosted schema changes.
+
+Run npm commands inside visaflow-assistant-main/; main has no root npm wrapper.
+npm test is the full checked-in suite, npm run test:cases is a subset, and CI runs lint,
+typecheck, and the full suite on pushes/PRs targeting main. Build is a separate local check.
+
+The unpublished editor migration and 117-test report are not shipped main evidence.
+See [TASKS.md](./TASKS.md) for remaining implementation and live release checks.

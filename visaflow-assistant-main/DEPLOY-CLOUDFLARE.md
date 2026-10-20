@@ -1,122 +1,107 @@
-# Deploy To Cloudflare Workers
+# Deploy VisaFlow to Cloudflare Workers
 
-This repo already uses TanStack Start with the Cloudflare Vite plugin, so the remaining work is mostly configuration.
+Reviewed: 2026-10-20 against main at 71fa5b1. This guide describes committed configuration,
+not a fresh deployment or hosted-backend check. Historical publication and backend
+observations are in [PROJECT_STATUS.md](./PROJECT_STATUS.md).
 
-## What is already prepared in this repo
+## Working directory and prerequisites
 
-- `wrangler.jsonc` is configured to deploy the TanStack Start server entry to Cloudflare Workers.
-- `package.json` includes:
-  - `npm run cf:login`
-  - `npm run cf:whoami`
-  - `npm run cf:typegen`
-  - `npm run deploy`
-- `.env.example` lists the environment variables this app expects.
-
-## Commands you run locally
-
-From the repo root:
+Use Node.js 24 and npm. From the repository root:
 
 ```powershell
-npm install
-copy .env.example .env
+Set-Location visaflow-assistant-main
+npm ci
 ```
 
-Edit `.env` and replace the placeholder values.
+All remaining commands run inside this directory. Main has no root npm wrapper.
+Preserve existing configuration; use .env.example as the variable reference.
 
-Then authenticate and deploy:
+## Environment configuration
+
+Browser and server URL/key pairs must belong to the same Supabase project.
+
+| Variable                                          | Usage                                               |
+| ------------------------------------------------- | --------------------------------------------------- |
+| VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY | Browser values embedded during build                |
+| VITE_AUTH_REDIRECT_ORIGIN                         | Browser auth redirect origin, embedded during build |
+| SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY           | Server runtime/auth middleware                      |
+| APP_URL                                           | Server auth-origin fallback                         |
+| ANTHROPIC_API_KEY                                 | Optional extraction provider, server-only           |
+| ANTHROPIC_EXTRACTION_MODEL                        | Optional override; code default is claude-haiku-4-5 |
+| SUPABASE_SERVICE_ROLE_KEY                         | Optional unused service-role helper, server-only    |
+
+Local settings do not automatically become Worker runtime bindings. Configure server
+settings in Cloudflare for the target Worker. Current student, reviewer, and platform-admin
+flows use user-scoped clients; they do not require the unused service-role helper.
+Never put privileged/provider keys in VITE\_ variables.
+
+Without an Anthropic key, extraction uses the local text-pattern stub and manual review.
+A key enables the optional PDF/image/text extraction extension; live accuracy and deployed
+credential availability still need verification.
+
+## Build and publish
 
 ```powershell
 npm run cf:login
 npm run cf:whoami
+npm test
+npm run lint
 npm run build
+```
+
+Confirm browser build variables contain the production backend/origin, not placeholders.
+Then publish with the checked-in script:
+
+```powershell
 npm run deploy
 ```
 
-Your first deployment will give you a `*.workers.dev` URL.
+The deploy script rebuilds and runs Wrangler. The Cloudflare Vite plugin supplies the built
+Worker/assets. The checked-in wrangler.jsonc names visaflow-assistant, enables nodejs_compat,
+and uses the TanStack Start server entry; it does not pin an account or custom domain.
+Verify the selected account and runtime variables before publishing, and recheck them afterward.
+Rebuild whenever browser URL/key/origin values change.
 
-## Manual Cloudflare dashboard steps
+For dashboard-managed runtime variables, verify Wrangler's preservation behavior for the
+installed version before deploying. See [Cloudflare environment variables](https://developers.cloudflare.com/workers/configuration/environment-variables/)
+and [secrets](https://developers.cloudflare.com/workers/configuration/secrets/).
 
-In Cloudflare, open `Workers & Pages -> visaflow-assistant -> Settings -> Variables and Secrets` and add:
+## Supabase configuration
 
-Plain text variables:
+Confirm the intended project is active, inspect its migration history, and apply pending SQL
+from supabase/migrations/ in order. Main contains 18 migrations ending with
+20260610130000_bootstrap_platform_admin.sql. The local October editor/revalidation migration
+is not committed in the audited main revision. Regenerate types when the hosted schema changes.
 
-- `SUPABASE_URL`
-- `SUPABASE_PUBLISHABLE_KEY`
-- `APP_URL`
+Set Supabase Authentication's Site URL to the deployed app origin. Add the exact app callback
+URL to its redirect allowlist, and the callback for the actual local Vite origin/port:
 
-Secret:
+- https://your-app-domain.com/auth/callback
+- http://localhost:5173/auth/callback (adjust to the port Vite actually prints)
 
-- `SUPABASE_SERVICE_ROLE_KEY`
+Set local VITE_AUTH_REDIRECT_ORIGIN and APP_URL to the local origin during development.
+Remove old hardcoded builder domains from confirmation/reset templates and use the
+configured redirect. The app handles recovery through /auth/callback and /reset-password.
+See [Supabase redirect URLs](https://supabase.com/docs/guides/auth/redirect-urls)
+and [database migrations](https://supabase.com/docs/guides/deployment/database-migrations).
 
-Notes:
+Google sign-in is optional and requires complete provider credentials. Its provider OAuth
+callback is https://your-project-id.supabase.co/auth/v1/callback; the app callback remains
+/auth/callback on the VisaFlow origin. Apple sign-in is not exposed by the current UI.
 
-- `APP_URL` should be your deployed app origin, for example `https://app.example.com`.
-- This codebase currently does not import `src/integrations/supabase/client.server.ts` anywhere, so `SUPABASE_SERVICE_ROLE_KEY` is not exercised by the current app path. Keep it configured anyway if you plan to add server-side admin flows.
+For reviewer management, bootstrap a platform admin after signup as described in the
+[README](./README.md#bootstrapping-a-platform-admin), then assign reviewers to schools.
+A school_admin role alone does not grant access to every school's cases.
 
-If you want a real domain instead of the default `workers.dev` address:
+## Post-deployment checklist
 
-1. Open `Workers & Pages -> visaflow-assistant`.
-2. Go to `Settings -> Domains & Routes`.
-3. Add a custom domain such as `app.yourdomain.com`.
+1. Public landing/login/signup pages and signed-out protected-route redirects.
+2. Signup, confirmation, login/logout, forgot/reset password, and optional Google sign-in.
+3. Create/list/detail, requirement explanations, blockers/warnings, and readiness.
+4. Actual private Storage upload/download, versions, retry, and manual field review.
+5. Submission/resubmission, school-scoped decisions, and timeline/audit history.
+6. Platform-admin assignment/revocation and case-status notifications.
+7. Approved sensitive-change revalidation after its missing edit workflow is committed.
 
-## Manual Supabase steps
-
-### 1. Fix auth URL configuration
-
-In Supabase, go to `Authentication -> URL Configuration`.
-
-Set:
-
-- `Site URL` = `https://your-app-domain.com`
-
-Add redirect URLs:
-
-- `http://localhost:3000/auth/callback`
-- `https://your-worker-subdomain.workers.dev/auth/callback`
-- `https://your-app-domain.com/auth/callback`
-
-If you keep using the temporary Cloudflare URL before adding a custom domain, use the `workers.dev` URL in both the site URL and redirect list until the real domain is ready.
-
-### 2. Fix email confirmation / reset links
-
-If your Supabase email templates still send people to a Lovable URL, open `Authentication -> Email Templates` and remove any hardcoded Lovable domain.
-
-Use the redirect-aware template variables so Supabase sends users back to your app instead of an old builder URL.
-
-### 3. Fix Google and Apple sign-in
-
-The error:
-
-```json
-{"code":400,"error_code":"validation_failed","msg":"Unsupported provider: missing OAuth secret"}
-```
-
-means the provider is enabled in Supabase without a complete OAuth client configuration.
-
-In Supabase, go to:
-
-- `Authentication -> Providers -> Google`
-- `Authentication -> Providers -> Apple`
-
-Enter the provider credentials from Google Cloud and Apple Developer.
-
-The OAuth callback you register with Google or Apple should be your Supabase auth callback, not your app callback:
-
-```text
-https://your-project-id.supabase.co/auth/v1/callback
-```
-
-Your app callback remains:
-
-```text
-https://your-app-domain.com/auth/callback
-```
-
-## After deployment, test these flows
-
-1. Email signup
-2. Email confirmation link
-3. Forgot password
-4. Password reset
-5. Google sign-in
-6. Apple sign-in
+Code tests mock database/provider boundaries and do not replace live checks.
+A successful Worker publish alone does not complete the v1 release.

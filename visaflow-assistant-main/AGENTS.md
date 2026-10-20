@@ -1,4 +1,4 @@
-﻿# AGENTS.md
+# AGENTS.md
 
 ## Project
 
@@ -38,7 +38,7 @@ Do not start coding until you understand:
 
 ## Working style
 
-- Preserve the existing existing UI structure unless a task explicitly requires UI changes.
+- Preserve the existing UI structure unless a task explicitly requires UI changes.
 - Prefer small, modular, high-confidence changes.
 - Keep business logic out of presentational components.
 - Do not redesign the product without a clear task asking for it.
@@ -95,15 +95,15 @@ Out of scope for v1:
 
 Update these if the repo uses different scripts.
 
-Typical commands:
+Run these commands inside visaflow-assistant-main/ (the repository root has no npm package).
 
-- install: `npm install`
+- install: `npm ci`
 - dev: `npm run dev`
 - build: `npm run build`
 - lint: `npm run lint`
 - test: `npm test`
 
-If backend or Supabase local workflows exist, detect and use the repoâ€™s actual commands instead of assuming.
+If backend or Supabase local workflows exist, detect and use the repository's actual commands instead of assuming.
 
 ## Definition of done
 
