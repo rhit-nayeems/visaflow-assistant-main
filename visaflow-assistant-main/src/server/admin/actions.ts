@@ -42,7 +42,7 @@ const validateRevokeReviewerInput = (input: unknown): RevokeReviewerInput => {
 
 export const loadReviewerAdminDataAction = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator(() => ({}))
+  .validator(() => ({}))
   .handler(async ({ context }) => {
     const { loadReviewerAdminData } = await import("./reviewer-admin.server");
 
@@ -54,7 +54,7 @@ export const loadReviewerAdminDataAction = createServerFn({ method: "POST" })
 
 export const assignReviewerToSchoolAction = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator(validateAssignReviewerInput)
+  .validator(validateAssignReviewerInput)
   .handler(async ({ context, data }) => {
     const { assignReviewerToSchool } = await import("./reviewer-admin.server");
 
@@ -69,7 +69,7 @@ export const assignReviewerToSchoolAction = createServerFn({ method: "POST" })
 
 export const revokeReviewerFromSchoolAction = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator(validateRevokeReviewerInput)
+  .validator(validateRevokeReviewerInput)
   .handler(async ({ context, data }) => {
     const { revokeReviewerFromSchool } = await import("./reviewer-admin.server");
 

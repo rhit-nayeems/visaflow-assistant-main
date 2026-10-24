@@ -1,4 +1,5 @@
 const REQUIRED_CASE_WORKFLOW_MIGRATIONS = [
+  "20261008214723_complete_v1_case_editing_and_revalidation.sql",
   "20260416103000_fix_case_finalize_atomicity_and_document_registration.sql",
   "20260419113000_register_case_document_rpc.sql",
   "20260420120000_persist_case_document_reevaluation_flag.sql",
@@ -65,6 +66,7 @@ export const isCaseWorkflowSchemaDriftError = (
     ) ||
     databaseErrorText.includes("could not find the function public.register_case_document") ||
     databaseErrorText.includes("could not find the function public.apply_reviewer_case_decision") ||
+    databaseErrorText.includes("could not find the function public.update_case_details") ||
     databaseErrorText.includes("finalize_case_requirement_evaluation") ||
     databaseErrorText.includes("register_case_document") ||
     databaseErrorText.includes("apply_reviewer_case_decision") ||

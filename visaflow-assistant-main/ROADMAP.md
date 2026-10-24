@@ -175,27 +175,19 @@ These are intentionally deferred:
 - email automation
 - analytics/reporting for school staff
 
-## Current progress (2026-10-20)
+## V1 progress — 2026-10-08
 
-Reviewed against main at 71fa5b1. This table records committed implementation,
-not a completed hosted rollout or unpublished work from another checkout.
+The local implementation for phases 2–7 is in place: deterministic evaluation, status controls, sensitive approved edits with atomic history, document review/version handling, deadline/progress summaries, error states, and reusable logic tests. The complete migration chain and real PostgreSQL edit workflow are tested. All 117 tests, production build/typecheck, and lint pass (seven existing Fast Refresh warnings).
 
-| Phase            | Current state                                                    | Remaining work                                                       |
-| ---------------- | ---------------------------------------------------------------- | -------------------------------------------------------------------- |
-| 1: Scaffold      | Auth, pages, schema and seed SQL exist                           | Live auth, route, page and hosted schema/seed verification           |
-| 2: Requirements  | Shared deterministic evaluator, explanations, blocker/warning UI | Stronger required offer-letter field checks remain local work        |
-| 3: Transitions   | Shared graph, authenticated workflows, atomic reviewer decisions | Live lifecycle verification; history is not uniformly atomic         |
-| 4: Revalidation  | Sensitive-change helpers and change_pending guidance exist       | Commit dedicated approved-edit flow and atomic persistence/history   |
-| 5: Documents     | Versions, extraction lifecycle, manual review, retries           | Live Storage/provider verification                                   |
-| 6: UX            | Counts, next action, progress, alerts exist                      | Dashboard/deadline edge cases, load failures, v1 detail refinements  |
-| 7: Tests/cleanup | Full npm test suite and CI exist                                 | Database integration/browser coverage and optional component cleanup |
+Phase 1 live verification remains open. The authorized hosted project (`visaflow-assistant`, `cryimllpsevwelcsagih`) cannot be restored while the organization is at its free-project limit. Docker Desktop startup also failed. Apply migrations and matching environment configuration after restoration, then verify authenticated pages and real Auth/Storage flows before declaring the hosted v1 release complete. See TASKS.md and REPO_AUDIT.md for the remaining release checklist.
 
-School reviewer/admin tools, case-status notifications, and optional Anthropic extraction
-already exist as extensions; their presence does not expand the student CPT v1 contract.
-The future-phase list above describes v1 priorities rather than claiming no extension code exists.
+## Documentation and publication — 2026-10-11
 
-Priority: review/publish the local edit/revalidation increment, verify the intended hosted
-schema/configuration, then run authenticated Auth/Storage and case workflows. The local
-117-test report and October editor migration are not evidence for committed main.
-See [TASKS.md](./TASKS.md), [REPO_AUDIT.md](./REPO_AUDIT.md), and
-[PROJECT_STATUS.md](./PROJECT_STATUS.md) for evidence and remaining checks.
+The app was published on 2026-10-08 at [VisaFlow](https://visaflow-assistant.ledgerly-benefits.workers.dev). Public pages and the guest dashboard redirect were verified on that date. Publication preserves the existing backend settings and does not complete the selected-project migration or authenticated-flow verification. The restoration/free-project-limit and Docker failures above describe the last verification attempt, not a fresh account-status check.
+
+Documentation is synchronized across the READMEs, audit, architecture, project status, deployment guide, roadmap, and task list. The application-directory audit points to the canonical root audit. Historical portfolio exports are labeled separately; their embedded older test counts are not current release evidence. SPEC.md and AGENTS.md remain the product contract and working instructions.
+
+
+## Main reconciliation - 2026-10-24
+
+The local v1 implementation and PostgreSQL tests are now included in main alongside the existing reviewer/admin, notification, and optional extraction extensions. All 117 tests pass after a clean dependency installation. Hosted configuration, migration application, and authenticated Auth/Storage checks remain open; historical backend status was not rechecked.

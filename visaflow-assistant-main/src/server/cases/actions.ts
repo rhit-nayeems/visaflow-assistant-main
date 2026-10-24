@@ -1,4 +1,4 @@
-﻿import { createServerFn } from "@tanstack/react-start";
+import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import {
   validateAddCaseNoteInput,
@@ -12,12 +12,21 @@ import {
   validateRequestCaseChangesInput,
   validateSaveManualExtractedFieldsInput,
   validateSaveCaseDraftInput,
+  validateUpdateCaseDetailsInput,
   validateSubmitCaseForReviewInput,
 } from "./validation";
 
+export const updateCaseDetailsAction = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator(validateUpdateCaseDetailsInput)
+  .handler(async ({ context, data }) => {
+    const { updateCaseDetails } = await import("./workflows.server");
+    return updateCaseDetails({ supabase: context.supabase, userId: context.userId }, data);
+  });
+
 export const listReviewerCasesAction = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator(() => ({}))
+  .validator(() => ({}))
   .handler(async ({ context }) => {
     const { listReviewerCases } = await import("./reviewer-read.server");
 
@@ -29,7 +38,7 @@ export const listReviewerCasesAction = createServerFn({ method: "POST" })
 
 export const loadReviewerCaseDetailAction = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator(validateLoadReviewerCaseDetailInput)
+  .validator(validateLoadReviewerCaseDetailInput)
   .handler(async ({ context, data }) => {
     const { loadReviewerCaseDetail } = await import("./reviewer-read.server");
 
@@ -44,7 +53,7 @@ export const loadReviewerCaseDetailAction = createServerFn({ method: "POST" })
 
 export const saveCaseDraftAction = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator(validateSaveCaseDraftInput)
+  .validator(validateSaveCaseDraftInput)
   .handler(async ({ context, data }) => {
     const { saveCaseDraft } = await import("./workflows.server");
 
@@ -59,7 +68,7 @@ export const saveCaseDraftAction = createServerFn({ method: "POST" })
 
 export const registerUploadedCaseDocumentAction = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator(validateRegisterUploadedCaseDocumentInput)
+  .validator(validateRegisterUploadedCaseDocumentInput)
   .handler(async ({ context, data }) => {
     const { registerUploadedCaseDocument } = await import("./workflows.server");
 
@@ -74,7 +83,7 @@ export const registerUploadedCaseDocumentAction = createServerFn({ method: "POST
 
 export const finalizeCaseCreationAndEvaluateAction = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator(validateFinalizeCaseCreationAndEvaluateInput)
+  .validator(validateFinalizeCaseCreationAndEvaluateInput)
   .handler(async ({ context, data }) => {
     const { finalizeCaseCreationAndEvaluate } = await import("./workflows.server");
 
@@ -89,7 +98,7 @@ export const finalizeCaseCreationAndEvaluateAction = createServerFn({ method: "P
 
 export const reevaluateCaseAfterUploadsAction = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator(validateReevaluateCaseAfterUploadsInput)
+  .validator(validateReevaluateCaseAfterUploadsInput)
   .handler(async ({ context, data }) => {
     const { reevaluateCaseAfterUploads } = await import("./workflows.server");
 
@@ -104,7 +113,7 @@ export const reevaluateCaseAfterUploadsAction = createServerFn({ method: "POST" 
 
 export const retryCaseDocumentExtractionAction = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator(validateRetryCaseDocumentExtractionInput)
+  .validator(validateRetryCaseDocumentExtractionInput)
   .handler(async ({ context, data }) => {
     const { retryCaseDocumentExtraction } = await import("./workflows.server");
 
@@ -119,7 +128,7 @@ export const retryCaseDocumentExtractionAction = createServerFn({ method: "POST"
 
 export const saveManualExtractedFieldsAction = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator(validateSaveManualExtractedFieldsInput)
+  .validator(validateSaveManualExtractedFieldsInput)
   .handler(async ({ context, data }) => {
     const { saveManualExtractedFields } = await import("./workflows.server");
 
@@ -134,7 +143,7 @@ export const saveManualExtractedFieldsAction = createServerFn({ method: "POST" }
 
 export const submitCaseForReviewAction = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator(validateSubmitCaseForReviewInput)
+  .validator(validateSubmitCaseForReviewInput)
   .handler(async ({ context, data }) => {
     const { submitCaseForReview } = await import("./workflows.server");
 
@@ -149,7 +158,7 @@ export const submitCaseForReviewAction = createServerFn({ method: "POST" })
 
 export const approveCaseAction = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator(validateApproveCaseInput)
+  .validator(validateApproveCaseInput)
   .handler(async ({ context, data }) => {
     const { approveCase } = await import("./workflows.server");
 
@@ -164,7 +173,7 @@ export const approveCaseAction = createServerFn({ method: "POST" })
 
 export const denyCaseAction = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator(validateDenyCaseInput)
+  .validator(validateDenyCaseInput)
   .handler(async ({ context, data }) => {
     const { denyCase } = await import("./workflows.server");
 
@@ -179,7 +188,7 @@ export const denyCaseAction = createServerFn({ method: "POST" })
 
 export const requestCaseChangesAction = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator(validateRequestCaseChangesInput)
+  .validator(validateRequestCaseChangesInput)
   .handler(async ({ context, data }) => {
     const { requestCaseChanges } = await import("./workflows.server");
 
@@ -194,7 +203,7 @@ export const requestCaseChangesAction = createServerFn({ method: "POST" })
 
 export const addCaseNoteAction = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator(validateAddCaseNoteInput)
+  .validator(validateAddCaseNoteInput)
   .handler(async ({ context, data }) => {
     const { addCaseNote } = await import("./workflows.server");
 

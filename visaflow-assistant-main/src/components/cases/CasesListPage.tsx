@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { EmptyState } from "@/components/shared/EmptyState";
+import { AlertBanner } from "@/components/shared/AlertBanner";
 import {
   Select,
   SelectContent,
@@ -25,6 +26,7 @@ export function CasesListPage() {
   const { user } = useAuth();
   const [cases, setCases] = useState<Case[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
 
@@ -35,7 +37,8 @@ export function CasesListPage() {
       .select("*")
       .eq("user_id", user.id)
       .order("updated_at", { ascending: false })
-      .then(({ data }) => {
+      .then(({ data, error }) => {
+        if (error) setError(error.message);
         setCases(data || []);
         setLoading(false);
       });
@@ -73,6 +76,7 @@ export function CasesListPage() {
       </div>
 
       {/* Filters */}
+      {error && <AlertBanner variant="error" title="Cases could not load" description={error} />}
       <div className="flex items-center gap-3">
         <div className="relative flex-1 max-w-xs">
           <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />

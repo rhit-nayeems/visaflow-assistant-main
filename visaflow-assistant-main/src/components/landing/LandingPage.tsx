@@ -19,7 +19,7 @@ const features = [
     icon: Clock,
     title: "Deadline Management",
     description:
-      "Never miss a deadline. Track lead times, submission windows, and program start dates in one view.",
+      "See upcoming internship start dates and school-template lead-time warnings in one view.",
   },
   {
     icon: BarChart3,
@@ -31,7 +31,7 @@ const features = [
     icon: Bell,
     title: "Smart Alerts",
     description:
-      "Get notified when requirements change, documents expire, or action is needed on your case.",
+      "See case-status notifications and clear guidance when blockers need your attention.",
   },
   {
     icon: CheckCircle,

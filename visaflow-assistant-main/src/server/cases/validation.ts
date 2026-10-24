@@ -13,6 +13,17 @@ export interface SaveCaseDraftInput {
   caseSummary: string | null;
 }
 
+export interface UpdateCaseDetailsInput {
+  caseId: string;
+  expectedUpdatedAt: string;
+  employerName: string | null;
+  roleTitle: string | null;
+  workLocation: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  caseSummary: string | null;
+}
+
 export interface RegisterUploadedCaseDocumentInput {
   caseId: string;
   fileName: string;
@@ -133,8 +144,15 @@ const parseNullableDate = (
 ): string | null => {
   const normalized = parseNullableString(record, key, label);
 
-  if (normalized !== null && !DATE_ONLY_PATTERN.test(normalized)) {
-    throw new Error(`${label} must use YYYY-MM-DD format.`);
+  if (normalized !== null) {
+    const date = new Date(`${normalized}T00:00:00Z`);
+    if (
+      !DATE_ONLY_PATTERN.test(normalized) ||
+      !Number.isFinite(date.getTime()) ||
+      date.toISOString().slice(0, 10) !== normalized
+    ) {
+      throw new Error(`${label} must be a valid date in YYYY-MM-DD format.`);
+    }
   }
 
   return normalized;
@@ -145,7 +163,7 @@ export const validateSaveCaseDraftInput = (input: unknown): SaveCaseDraftInput =
     throw new Error("Case draft input is required.");
   }
 
-  return {
+  const result = {
     caseId: parseOptionalString(input, "caseId", "Case ID"),
     draftId: parseOptionalString(input, "draftId", "Draft ID"),
     schoolId: parseRequiredString(input, "schoolId", "School"),
@@ -157,6 +175,33 @@ export const validateSaveCaseDraftInput = (input: unknown): SaveCaseDraftInput =
     endDate: parseNullableDate(input, "endDate", "End date"),
     caseSummary: parseNullableString(input, "caseSummary", "Case summary"),
   };
+  assertDateRange(result.startDate, result.endDate);
+  return result;
+};
+
+const assertDateRange = (start: string | null, end: string | null) => {
+  if (start && end && end < start) {
+    throw new Error("End date must be on or after the start date.");
+  }
+};
+
+export const validateUpdateCaseDetailsInput = (input: unknown): UpdateCaseDetailsInput => {
+  if (!isRecord(input)) throw new Error("Case details are required.");
+  const result = {
+    caseId: parseRequiredString(input, "caseId", "Case"),
+    expectedUpdatedAt: parseRequiredString(input, "expectedUpdatedAt", "Case version"),
+    employerName: parseNullableString(input, "employerName", "Employer name"),
+    roleTitle: parseNullableString(input, "roleTitle", "Role title"),
+    workLocation: parseNullableString(input, "workLocation", "Work location"),
+    startDate: parseNullableDate(input, "startDate", "Start date"),
+    endDate: parseNullableDate(input, "endDate", "End date"),
+    caseSummary: parseNullableString(input, "caseSummary", "Case summary"),
+  };
+  if (!Number.isFinite(Date.parse(result.expectedUpdatedAt))) {
+    throw new Error("Case version must be a valid timestamp.");
+  }
+  assertDateRange(result.startDate, result.endDate);
+  return result;
 };
 
 export const validateRegisterUploadedCaseDocumentInput = (

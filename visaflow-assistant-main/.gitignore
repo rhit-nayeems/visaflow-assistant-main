@@ -1,4 +1,9 @@
 # Logs
+.env
+.env.*
+!.env.example
+supabase/.temp/
+supabase/.branches/
 logs
 *.log
 *.out

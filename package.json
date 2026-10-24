@@ -1,0 +1,19 @@
+{
+  "name": "visaflow",
+  "private": true,
+  "sideEffects": false,
+  "type": "module",
+  "scripts": {
+    "dev": "npm --prefix visaflow-assistant-main run dev",
+    "build": "npm --prefix visaflow-assistant-main run build",
+    "build:dev": "npm --prefix visaflow-assistant-main run build:dev",
+    "preview": "npm --prefix visaflow-assistant-main run preview",
+    "test:cases": "npm --prefix visaflow-assistant-main run test:cases",
+    "lint": "npm --prefix visaflow-assistant-main run lint",
+    "format": "npm --prefix visaflow-assistant-main run format",
+    "test": "npm --prefix visaflow-assistant-main test",
+    "typecheck": "npm --prefix visaflow-assistant-main run typecheck",
+    "postinstall": "npm --prefix visaflow-assistant-main ci",
+    "test:database": "npm --prefix visaflow-assistant-main run test:database"
+  }
+}

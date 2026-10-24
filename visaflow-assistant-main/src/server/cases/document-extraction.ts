@@ -21,8 +21,7 @@ export interface FailedDocumentExtractionResult {
 }
 
 export type DocumentExtractionResult =
-  | SuccessfulDocumentExtractionResult
-  | FailedDocumentExtractionResult;
+  SuccessfulDocumentExtractionResult | FailedDocumentExtractionResult;
 
 interface ExtractDocumentInput {
   documentType: string;

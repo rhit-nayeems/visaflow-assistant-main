@@ -1,6 +1,9 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "visaflow-assistant",
+  "account_id": "8b395219936fcfff676502ee88c6f483",
+  "workers_dev": true,
+  "observability": { "enabled": true },
   "compatibility_date": "2025-09-24",
   "compatibility_flags": ["nodejs_compat"],
   "main": "@tanstack/react-start/server-entry",

@@ -22,8 +22,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
+    let sessionVersion = 0;
 
     const applySession = async (nextSession: Session | null) => {
+      const version = ++sessionVersion;
       if (cancelled) {
         return;
       }
@@ -40,7 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const nextRoles = await loadUserRoles(nextSession.user.id);
 
-      if (cancelled) {
+      if (cancelled || version !== sessionVersion) {
         return;
       }
 

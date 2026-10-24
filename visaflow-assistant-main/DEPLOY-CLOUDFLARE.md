@@ -1,107 +1,149 @@
 # Deploy VisaFlow to Cloudflare Workers
 
-Reviewed: 2026-10-20 against main at 71fa5b1. This guide describes committed configuration,
-not a fresh deployment or hosted-backend check. Historical publication and backend
-observations are in [PROJECT_STATUS.md](./PROJECT_STATUS.md).
+Documentation reviewed: 2026-10-11. Last deployment and browser verification: 2026-10-08.
+
+Live app: [VisaFlow](https://visaflow-assistant.ledgerly-benefits.workers.dev).
+Worker: `visaflow-assistant`. Published version: `7ad270f5-1091-460b-abf3-e90f73428a4b`.
+
+The landing/login/signup pages returned HTTP 200, and a signed-out dashboard visit redirected
+to login. This verifies publication, not the complete authenticated workflow. Deployment
+preserved the existing backend URL/key pair. The user-selected Supabase project
+`visaflow-assistant` (`cryimllpsevwelcsagih`) still needed restoration, matching credentials,
+and migrations at the last check. Restoration was rejected by the active-free-project limit;
+no unrelated project was paused. See [PROJECT_STATUS.md](./PROJECT_STATUS.md) for release gaps.
 
 ## Working directory and prerequisites
 
-Use Node.js 24 and npm. From the repository root:
+Use Node.js 24 and npm. The application lives in `visaflow-assistant-main`; the root npm scripts
+delegate normal development, build, and test commands there. Cloudflare-specific scripts live
+in the application package.
+
+From the repository root:
 
 ```powershell
+npm install
 Set-Location visaflow-assistant-main
-npm ci
 ```
 
-All remaining commands run inside this directory. Main has no root npm wrapper.
-Preserve existing configuration; use .env.example as the variable reference.
+For a fresh checkout, copy `.env.example` to `.env`. Preserve an existing `.env` and update its
+values rather than overwriting it with placeholders. Environment files are ignored by Git.
 
 ## Environment configuration
 
-Browser and server URL/key pairs must belong to the same Supabase project.
+The browser and server must use the same Supabase project and matching publishable key.
 
-| Variable                                          | Usage                                               |
-| ------------------------------------------------- | --------------------------------------------------- |
-| VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY | Browser values embedded during build                |
-| VITE_AUTH_REDIRECT_ORIGIN                         | Browser auth redirect origin, embedded during build |
-| SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY           | Server runtime/auth middleware                      |
-| APP_URL                                           | Server auth-origin fallback                         |
-| ANTHROPIC_API_KEY                                 | Optional extraction provider, server-only           |
-| ANTHROPIC_EXTRACTION_MODEL                        | Optional override; code default is claude-haiku-4-5 |
-| SUPABASE_SERVICE_ROLE_KEY                         | Optional unused service-role helper, server-only    |
+| Setting                         | Where used                                    | Required for v1   |
+| ------------------------------- | --------------------------------------------- | ----------------- |
+| `VITE_SUPABASE_URL`             | Browser, embedded during build                | Yes               |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | Browser, embedded during build                | Yes               |
+| `VITE_AUTH_REDIRECT_ORIGIN`     | Browser auth redirects, embedded during build | Production origin |
+| `SUPABASE_URL`                  | Worker runtime/auth middleware                | Yes               |
+| `SUPABASE_PUBLISHABLE_KEY`      | Worker runtime/auth middleware                | Yes               |
+| `APP_URL`                       | Worker auth-origin fallback                   | Production origin |
 
-Local settings do not automatically become Worker runtime bindings. Configure server
-settings in Cloudflare for the target Worker. Current student, reviewer, and platform-admin
-flows use user-scoped clients; they do not require the unused service-role helper.
-Never put privileged/provider keys in VITE\_ variables.
+Set the production origin to `https://visaflow-assistant.ledgerly-benefits.workers.dev`.
+Local `.env` settings do not automatically become deployed Worker bindings. Browser values
+are compiled into assets; server settings must also be configured on Cloudflare.
 
-Without an Anthropic key, extraction uses the local text-pattern stub and manual review.
-A key enables the optional PDF/image/text extraction extension; live accuracy and deployed
-credential availability still need verification.
+V1 does not require a service-role key or Anthropic key. The unused service-role client is a
+server-only helper; adding its credential is unnecessary for the current student flows.
+The optional Anthropic extraction extension is separate from the default stub/manual review
+flow and was not enabled or live-verified. Never place privileged or provider credentials in
+`VITE_` variables. See [Supabase API key guidance](https://supabase.com/docs/guides/api/api-keys).
 
 ## Build and publish
+
+Authenticate using the application scripts, then build and check the generated Worker:
 
 ```powershell
 npm run cf:login
 npm run cf:whoami
-npm test
-npm run lint
+$env:VITE_AUTH_REDIRECT_ORIGIN = 'https://visaflow-assistant.ledgerly-benefits.workers.dev'
+$env:APP_URL = $env:VITE_AUTH_REDIRECT_ORIGIN
 npm run build
+npx wrangler deploy --dry-run --keep-vars
 ```
 
-Confirm browser build variables contain the production backend/origin, not placeholders.
-Then publish with the checked-in script:
+Stop if the build or dry-run fails. The Cloudflare Vite plugin redirects Wrangler to the
+built `dist/server/wrangler.json`, which includes the compiled server and client assets.
+The checked-in config pins the target account and enables `workers.dev` and observability.
+
+For the first publish or when runtime credentials change, create an ignored private JSON file
+such as `.env.deploy-secrets.json` with these fields:
+
+```json
+{
+  "SUPABASE_URL": "https://your-project-id.supabase.co",
+  "SUPABASE_PUBLISHABLE_KEY": "your-project-publishable-key",
+  "APP_URL": "https://visaflow-assistant.ledgerly-benefits.workers.dev"
+}
+```
+
+Fill in the real matching values locally; do not print keys or put them in command arguments.
+Upload these settings with the deployment and remove the temporary file after success:
 
 ```powershell
-npm run deploy
+npx wrangler deploy --keep-vars --secrets-file .env.deploy-secrets.json
+Remove-Item -LiteralPath .env.deploy-secrets.json
 ```
 
-The deploy script rebuilds and runs Wrangler. The Cloudflare Vite plugin supplies the built
-Worker/assets. The checked-in wrangler.jsonc names visaflow-assistant, enables nodejs_compat,
-and uses the TanStack Start server entry; it does not pin an account or custom domain.
-Verify the selected account and runtime variables before publishing, and recheck them afterward.
-Rebuild whenever browser URL/key/origin values change.
+For later deployments with unchanged runtime settings:
 
-For dashboard-managed runtime variables, verify Wrangler's preservation behavior for the
-installed version before deploying. See [Cloudflare environment variables](https://developers.cloudflare.com/workers/configuration/environment-variables/)
-and [secrets](https://developers.cloudflare.com/workers/configuration/secrets/).
+```powershell
+npx wrangler deploy --keep-vars
+```
 
-## Supabase configuration
+`--keep-vars` preserves settings managed outside the config file. The bare `npm run deploy`
+script builds and runs Wrangler without that flag, so use the explicit command above when
+preserving dashboard-managed variables. Rebuild whenever browser Supabase values change.
+See [Cloudflare secrets](https://developers.cloudflare.com/workers/configuration/secrets/).
 
-Confirm the intended project is active, inspect its migration history, and apply pending SQL
-from supabase/migrations/ in order. Main contains 18 migrations ending with
-20260610130000_bootstrap_platform_admin.sql. The local October editor/revalidation migration
-is not committed in the audited main revision. Regenerate types when the hosted schema changes.
+## Supabase setup before a complete v1 release
 
-Set Supabase Authentication's Site URL to the deployed app origin. Add the exact app callback
-URL to its redirect allowlist, and the callback for the actual local Vite origin/port:
+Restore the selected project after resolving the free-project limit. Inspect its migration
+history, then apply pending migrations from this application directory. Include
+`20261008214723_complete_v1_case_editing_and_revalidation.sql` for the edit RPC, atomic history,
+transition guards, and default offer-letter field requirements. Regenerate the generated types
+afterward; `workflow-schema.ts` is the temporary additive edit-RPC contract.
 
-- https://your-app-domain.com/auth/callback
-- http://localhost:5173/auth/callback (adjust to the port Vite actually prints)
+In Supabase Authentication → URL Configuration, set the Site URL to the deployed app origin.
+Allow the exact callback URLs used by the app:
 
-Set local VITE_AUTH_REDIRECT_ORIGIN and APP_URL to the local origin during development.
-Remove old hardcoded builder domains from confirmation/reset templates and use the
-configured redirect. The app handles recovery through /auth/callback and /reset-password.
-See [Supabase redirect URLs](https://supabase.com/docs/guides/auth/redirect-urls)
-and [database migrations](https://supabase.com/docs/guides/deployment/database-migrations).
+- `https://visaflow-assistant.ledgerly-benefits.workers.dev/auth/callback`
+- `http://localhost:5173/auth/callback`
+- `http://127.0.0.1:5173/auth/callback` if using that local origin
 
-Google sign-in is optional and requires complete provider credentials. Its provider OAuth
-callback is https://your-project-id.supabase.co/auth/v1/callback; the app callback remains
-/auth/callback on the VisaFlow origin. Apple sign-in is not exposed by the current UI.
+Use the actual port/origin printed by Vite if it differs. For local development, set the local
+`VITE_AUTH_REDIRECT_ORIGIN`/`APP_URL` to that local origin rather than the production example.
+The app handles recovery links through `/auth/callback` and routes recovery sessions to
+`/reset-password`. Remove old hardcoded builder URLs from email templates and confirm the
+redirect-aware confirmation/reset links. See [Supabase redirect URLs](https://supabase.com/docs/guides/auth/redirect-urls).
 
-For reviewer management, bootstrap a platform admin after signup as described in the
-[README](./README.md#bootstrapping-a-platform-admin), then assign reviewers to schools.
-A school_admin role alone does not grant access to every school's cases.
+Google sign-in is optional and needs complete Google provider credentials. Its provider OAuth
+callback is `https://<project-ref>.supabase.co/auth/v1/callback`; the app redirect remains the
+VisaFlow `/auth/callback` URL. Apple sign-in is not exposed by the current login UI.
 
-## Post-deployment checklist
+If adding a custom domain later, update the app origins, rebuild, update Cloudflare runtime
+bindings, and add the matching Supabase Site URL/redirect URLs.
 
-1. Public landing/login/signup pages and signed-out protected-route redirects.
-2. Signup, confirmation, login/logout, forgot/reset password, and optional Google sign-in.
-3. Create/list/detail, requirement explanations, blockers/warnings, and readiness.
-4. Actual private Storage upload/download, versions, retry, and manual field review.
-5. Submission/resubmission, school-scoped decisions, and timeline/audit history.
-6. Platform-admin assignment/revocation and case-status notifications.
-7. Approved sensitive-change revalidation after its missing edit workflow is committed.
+## Verification after publish
 
-Code tests mock database/provider boundaries and do not replace live checks.
-A successful Worker publish alone does not complete the v1 release.
+Check the public landing page, login/signup pages, and signed-out protected-route redirect.
+After the selected backend is active, configured, and migrated, verify:
+
+1. Email signup, confirmation, login/logout, forgot-password, and reset-password flows.
+2. Case creation/list/detail and requirement explanations, blockers, warnings, and readiness.
+3. Actual private Storage uploads/downloads, document versions, and manual field review.
+4. Submission and resubmission guards.
+5. Approved employer/location/date edits becoming `change_pending`, with audit/timeline history.
+6. Google sign-in if its optional provider is configured.
+
+All authenticated/backend checks remain open until exercised against the selected project.
+
+
+For reviewer management, bootstrap a platform admin after signup as described in the [README](./README.md#bootstrapping-a-platform-admin), then assign reviewers to schools. A school_admin role alone does not grant access to every school's cases.
+
+
+## Main reconciliation - 2026-10-24
+
+The previously local case editor, atomic edit/revalidation migration, required offer-letter fields, dashboard/deadline helpers, and PostgreSQL tests are now included in main. Existing reviewer/admin, notification, and optional extraction-provider work is preserved. The full suite passes 117 tests after a clean dependency installation. Earlier deployment, account-limit, and browser observations above are historical; no hosted migration, deployment, or authenticated Auth/Storage check was performed in this reconciliation.

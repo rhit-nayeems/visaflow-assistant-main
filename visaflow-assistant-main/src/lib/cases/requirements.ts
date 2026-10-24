@@ -8,12 +8,7 @@ type RequirementInsert = TablesInsert<"case_requirements">;
 type CaseStatus = Tables<"cases">["status"];
 
 type CaseFieldKey =
-  | "employer_name"
-  | "role_title"
-  | "work_location"
-  | "start_date"
-  | "end_date"
-  | "case_summary";
+  "employer_name" | "role_title" | "work_location" | "start_date" | "end_date" | "case_summary";
 
 type RequirementType = "document" | "case_field" | "extracted_field" | "lead_time";
 
@@ -120,6 +115,21 @@ const buildDefaultRequirements = (
     type: "document",
     documentType: "advisor_approval",
   },
+  ...(
+    [
+      ["employer_name", "Employer name"],
+      ["role_title", "Job title"],
+      ["start_date", "Start date"],
+      ["end_date", "End date"],
+    ] as const
+  ).map(([field, label]): TemplateRequirementConfig => ({
+    key: `offer_letter_${field}`,
+    label: `${label} in offer letter`,
+    severity: "blocker",
+    type: "extracted_field",
+    documentType: "offer_letter",
+    extractedFieldName: field,
+  })),
   {
     key: "course_registration_uploaded",
     label: "Course registration uploaded",
@@ -481,7 +491,7 @@ const evaluateExtractedFieldRequirement = (
     status = "met";
     explanation = extractedValue.manually_corrected
       ? `${requirement.label} is available after manual correction on the latest ${documentLabel}.`
-      : `${requirement.label} is available in the local extracted-field stub output for the latest ${documentLabel}.`;
+      : `${requirement.label} is available in the extracted fields for the latest ${documentLabel}. Review the value before submission.`;
   } else {
     explanation = `${requirement.label} is still missing on the latest ${documentLabel}. Review and correct the extracted field before submission.`;
   }
@@ -628,6 +638,13 @@ export const getCaseNextRecommendedAction = (
   status: CaseStatus,
   summary: RequirementSummary,
 ): string => {
+  if (status === "submitted") return "Wait for review from your international office.";
+  if (status === "approved")
+    return "Keep your approved details current. Employment changes may require reapproval.";
+  if (status === "denied")
+    return "Review the decision in your timeline before creating another case.";
+  if (status === "completed")
+    return "This case is completed. Keep its documents and history for your records.";
   if (status === "draft") {
     return "Complete the case setup flow to evaluate your CPT requirements.";
   }
@@ -644,16 +661,8 @@ export const getCaseNextRecommendedAction = (
     return `Resolve ${summary.blockerCount} blocker${summary.blockerCount === 1 ? "" : "s"} to move forward.`;
   }
 
-  if (status === "ready_for_submission" || summary.readyForSubmission) {
+  if (status === "ready_for_submission" && summary.readyForSubmission) {
     return "Your case is ready for submission.";
-  }
-
-  if (status === "submitted") {
-    return "Wait for review from your international office.";
-  }
-
-  if (status === "approved") {
-    return "Keep approved case details stable unless reapproval is required.";
   }
 
   return "";

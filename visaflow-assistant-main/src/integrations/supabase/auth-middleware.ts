@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { createMiddleware } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 import { normalizeSupabaseUrl } from "./url";
-import type { Database } from "./types";
+import type { Database } from "./workflow-schema";
 
 export const requireSupabaseAuth = createMiddleware({ type: "function" }).server(
   async ({ next }) => {

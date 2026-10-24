@@ -1,6 +1,7 @@
-﻿import assert from "node:assert/strict";
+import assert from "node:assert/strict";
 import test from "node:test";
 import { STALE_DOCUMENT_EXTRACTION_THRESHOLD_MINUTES } from "../../lib/cases/document-extraction-state.ts";
+import { evaluateCaseRequirements } from "../../lib/cases/requirements.ts";
 import {
   approveCase,
   buildDocumentUploadTimelineEvent,
@@ -99,6 +100,10 @@ const buildReadyCaseDocuments = (): {
     documents,
     extractedFields: [
       buildExtractedFieldRecord(offerLetter.id, "job_duties", "Build product features"),
+      buildExtractedFieldRecord(offerLetter.id, "employer_name", "Acme Corp"),
+      buildExtractedFieldRecord(offerLetter.id, "role_title", "Software Engineer Intern"),
+      buildExtractedFieldRecord(offerLetter.id, "start_date", "2099-06-01"),
+      buildExtractedFieldRecord(offerLetter.id, "end_date", "2099-09-01"),
     ],
   };
 };
@@ -192,6 +197,7 @@ const buildWorkflowContextForSubmission = (
     caseOverrides?: Partial<CaseRecord>;
     documents?: DocumentRecord[];
     templateConfig?: unknown;
+    hasBlockers?: boolean;
   } = {},
 ): {
   context: CaseWorkflowContext;
@@ -214,6 +220,19 @@ const buildWorkflowContextForSubmission = (
 
   const supabase = {
     from(table: string) {
+      if (table === "case_requirements") {
+        return {
+          select() {
+            return this;
+          },
+          async eq() {
+            return {
+              data: [{ severity: "blocker", status: options.hasBlockers ? "not_met" : "met" }],
+              error: null,
+            };
+          },
+        };
+      }
       if (table === "cases") {
         return createCasesTable();
       }
@@ -539,7 +558,7 @@ const buildStatefulWorkflowHarness = (
   for (const document of documents) {
     storedDocuments.set(
       document.file_path,
-      "Job Duties: Build product features and support product releases",
+      "Job Duties: Build product features and support product releases\nEmployer Name: Acme Corp\nJob Title: Software Engineer Intern\nStart Date: 2099-06-01\nEnd Date: 2099-09-01",
     );
   }
 
@@ -550,6 +569,24 @@ const buildStatefulWorkflowHarness = (
   const createContext = (): CaseWorkflowContext => {
     const supabase = {
       from(table: string) {
+        if (table === "case_requirements") {
+          return {
+            select() {
+              return this;
+            },
+            async eq() {
+              return {
+                data: evaluateCaseRequirements({
+                  caseData: caseRecord,
+                  documents,
+                  extractedFields,
+                  templateConfig: null,
+                }),
+                error: null,
+              };
+            },
+          };
+        }
         if (table === "cases") {
           return createCasesTable();
         }
@@ -1185,6 +1222,19 @@ test("submission allows a change-pending case to be resubmitted for review", asy
   );
 });
 
+test("submission rejects unresolved blockers even on a ready or change-pending case", async () => {
+  for (const status of ["ready_for_submission", "change_pending"] as const) {
+    const workflow = buildWorkflowContextForSubmission(status, { hasBlockers: true });
+    await assert.rejects(
+      submitCaseForReview(workflow.context, { caseId: workflow.caseRecord.id }),
+      /Resolve all blocker/,
+    );
+    assert.equal(workflow.caseRecord.status, status);
+    assert.equal(workflow.caseUpdates.length, 0);
+    assert.equal(workflow.timelineEvents.length, 0);
+  }
+});
+
 test("submission repairs a stale reevaluation flag when no relevant latest documents remain unresolved", async () => {
   const workflow = buildWorkflowContextForSubmission("ready_for_submission", {
     caseOverrides: {
@@ -1369,7 +1419,10 @@ test("document upload automatically extracts and re-evaluates the case on succes
   const workflow = buildStatefulWorkflowHarness();
   const filePath = `${workflow.caseRecord.user_id}/${workflow.caseRecord.id}/upload-offer-letter-2/offer-letter-v2.pdf`;
 
-  workflow.setStoredDocument(filePath, "Job Duties: Build product features and support releases");
+  workflow.setStoredDocument(
+    filePath,
+    "Job Duties: Build product features and support releases\nEmployer Name: Acme Corp\nJob Title: Software Engineer Intern\nStart Date: 2099-06-01\nEnd Date: 2099-09-01",
+  );
 
   const uploadResult = await registerUploadedCaseDocument(workflow.createContext(), {
     caseId: workflow.caseRecord.id,
@@ -1466,7 +1519,10 @@ test("failed extraction keeps submission blocked until retry succeeds", async ()
     /Wait for document extraction to finish, or retry any failed or stale extraction, before submitting this case for review\./,
   );
 
-  workflow.setStoredDocument(filePath, "Job Duties: Build product features and support releases");
+  workflow.setStoredDocument(
+    filePath,
+    "Job Duties: Build product features and support releases\nEmployer Name: Acme Corp\nJob Title: Software Engineer Intern\nStart Date: 2099-06-01\nEnd Date: 2099-09-01",
+  );
 
   const retryResult = await retryCaseDocumentExtraction(workflow.createContext(), {
     caseId: workflow.caseRecord.id,
@@ -1528,11 +1584,21 @@ test("manual extracted-field save resolves a failed latest document version thro
         fieldName: "job_duties",
         fieldValue: "Build product features and support releases manually",
       },
+      ...Object.entries({
+        employer_name: "Acme Corp",
+        role_title: "Software Engineer Intern",
+        start_date: "2099-06-01",
+        end_date: "2099-09-01",
+      }).map(([fieldName, fieldValue]) => ({
+        documentId: uploadResult.documentId,
+        fieldName,
+        fieldValue,
+      })),
     ],
   });
 
   assert.equal(saveResult.status, "ready_for_submission");
-  assert.equal(saveResult.updatedFieldCount, 1);
+  assert.equal(saveResult.updatedFieldCount, 5);
   assert.equal(workflow.caseRecord.status, "ready_for_submission");
   assert.equal(workflow.caseRecord.needs_document_reevaluation, false);
   assert.equal(
@@ -1556,7 +1622,7 @@ test("manual extracted-field save resolves a failed latest document version thro
       {
         confidence_score: null,
         created_at: "2026-04-20T00:05:00.000Z",
-        id: "extracted-2",
+        id: "extracted-6",
         manually_corrected: true,
       },
     ),
@@ -1702,7 +1768,10 @@ test("manual extracted-field save rejects superseded document versions", async (
   const workflow = buildStatefulWorkflowHarness();
   const filePath = `${workflow.caseRecord.user_id}/${workflow.caseRecord.id}/upload-offer-letter-2/offer-letter-v2.pdf`;
 
-  workflow.setStoredDocument(filePath, "Job Duties: Build product features and support releases");
+  workflow.setStoredDocument(
+    filePath,
+    "Job Duties: Build product features and support releases\nEmployer Name: Acme Corp\nJob Title: Software Engineer Intern\nStart Date: 2099-06-01\nEnd Date: 2099-09-01",
+  );
 
   await registerUploadedCaseDocument(workflow.createContext(), {
     caseId: workflow.caseRecord.id,
@@ -1769,7 +1838,7 @@ test("stale processing extraction can be retried without creating a duplicate do
   ).toISOString();
   workflow.setStoredDocument(
     processingDocument.file_path,
-    "Job Duties: Build product features and support releases",
+    "Job Duties: Build product features and support releases\nEmployer Name: Acme Corp\nJob Title: Software Engineer Intern\nStart Date: 2099-06-01\nEnd Date: 2099-09-01",
   );
 
   const retryResult = await retryCaseDocumentExtraction(workflow.createContext(), {
@@ -1792,7 +1861,10 @@ test("retrying the same upload registration does not create a duplicate document
   const workflow = buildStatefulWorkflowHarness();
   const filePath = `${workflow.caseRecord.user_id}/${workflow.caseRecord.id}/upload-offer-letter-2/offer-letter-v2.pdf`;
 
-  workflow.setStoredDocument(filePath, "Job Duties: Build product features and support releases");
+  workflow.setStoredDocument(
+    filePath,
+    "Job Duties: Build product features and support releases\nEmployer Name: Acme Corp\nJob Title: Software Engineer Intern\nStart Date: 2099-06-01\nEnd Date: 2099-09-01",
+  );
 
   const firstAttempt = await registerUploadedCaseDocument(workflow.createContext(), {
     caseId: workflow.caseRecord.id,
@@ -1819,7 +1891,7 @@ test("retrying the same upload registration does not create a duplicate document
   assert.equal(
     workflow.extractedFields.filter((field) => field.document_id === firstAttempt.documentId)
       .length,
-    1,
+    5,
   );
   assert.equal(workflow.caseRecord.needs_document_reevaluation, false);
 });

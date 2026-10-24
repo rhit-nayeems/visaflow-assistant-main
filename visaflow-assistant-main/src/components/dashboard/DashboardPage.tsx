@@ -8,7 +8,7 @@ import { StatusBadge } from "@/components/shared/StatusBadge";
 import { AlertBanner } from "@/components/shared/AlertBanner";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { TimelineItem } from "@/components/shared/TimelineItem";
-import { summarizeRequirementRows } from "@/lib/cases/requirements";
+import { summarizeDashboardCases } from "@/lib/cases/summary";
 import { FileText, Plus, AlertCircle, Clock, CheckCircle, BarChart3, Loader2 } from "lucide-react";
 import type { Tables } from "@/integrations/supabase/types";
 import type { CaseStatusKey } from "@/lib/constants";
@@ -23,6 +23,7 @@ export function DashboardPage() {
   const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     if (!user) return;
@@ -41,6 +42,12 @@ export function DashboardPage() {
           .order("created_at", { ascending: false })
           .limit(10),
       ]);
+      const failure = casesRes.error ?? requirementsRes.error ?? eventsRes.error;
+      if (failure) {
+        setError(failure.message);
+        setLoading(false);
+        return;
+      }
       setCases(casesRes.data || []);
       setRequirements(requirementsRes.data || []);
       setEvents(eventsRes.data || []);
@@ -58,41 +65,16 @@ export function DashboardPage() {
     );
   }
 
-  const requirementSummariesByCaseId = new Map(
-    cases.map((caseData) => [
-      caseData.id,
-      summarizeRequirementRows(
-        requirements.filter((requirement) => requirement.case_id === caseData.id),
-      ),
-    ]),
-  );
-
-  const activeCases = cases.filter(
-    (caseData) => !["completed", "denied"].includes(caseData.status),
-  );
-  const blockedCases = activeCases.filter((caseData) => {
-    const summary = requirementSummariesByCaseId.get(caseData.id);
-    if (summary?.hasEvaluatedRequirements) {
-      return summary.blockerCount > 0;
-    }
-
-    return caseData.status === "blocked" || caseData.status === "missing_documents";
-  });
-  const readyCases = activeCases.filter((caseData) => {
-    const summary = requirementSummariesByCaseId.get(caseData.id);
-    if (summary?.hasEvaluatedRequirements) {
-      return summary.readyForSubmission;
-    }
-
-    return caseData.status === "ready_for_submission";
-  });
-  const upcomingDeadlines = cases.filter((caseData) => {
-    if (!caseData.start_date) return false;
-    const days = Math.ceil(
-      (new Date(caseData.start_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24),
+  if (error)
+    return (
+      <div className="p-6">
+        <AlertBanner variant="error" title="Dashboard could not load" description={error} />
+      </div>
     );
-    return days > 0 && days <= 14;
-  });
+  const { activeCases, blockedCases, readyCases, upcomingDeadlines } = summarizeDashboardCases(
+    cases,
+    requirements,
+  );
 
   const statCards = [
     { label: "Active Cases", value: activeCases.length, icon: FileText, color: "text-primary" },
@@ -137,6 +119,13 @@ export function DashboardPage() {
               </Button>
             </Link>
           }
+        />
+      )}
+      {upcomingDeadlines.length > 0 && (
+        <AlertBanner
+          variant="warning"
+          title="Upcoming start dates"
+          description={`${upcomingDeadlines.length} case${upcomingDeadlines.length === 1 ? "" : "s"} start within 14 days. Review their requirements and submission progress.`}
         />
       )}
 
@@ -223,13 +212,14 @@ export function DashboardPage() {
             ) : (
               <div>
                 {events.slice(0, 6).map((event) => (
-                  <TimelineItem
-                    key={event.id}
-                    eventType={event.event_type}
-                    title={event.title}
-                    description={event.description}
-                    createdAt={event.created_at}
-                  />
+                  <Link key={event.id} to="/cases/$caseId" params={{ caseId: event.case_id }}>
+                    <TimelineItem
+                      eventType={event.event_type}
+                      title={event.title}
+                      description={event.description}
+                      createdAt={event.created_at}
+                    />
+                  </Link>
                 ))}
               </div>
             )}

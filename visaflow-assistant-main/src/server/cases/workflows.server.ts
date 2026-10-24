@@ -1,9 +1,10 @@
-﻿import {
+import {
   deriveCaseStatusFromRequirements,
   evaluateCaseRequirements,
   getLatestEditableExtractedFields,
   getLatestDocumentsBlockingSubmission,
   isDocumentTypeRelevantToSubmission,
+  summarizeRequirementRows,
 } from "../../lib/cases/requirements.ts";
 import {
   STALE_DOCUMENT_EXTRACTION_THRESHOLD_MINUTES,
@@ -16,6 +17,7 @@ import {
   canRerunDeterministicEvaluation,
 } from "../../lib/cases/status.ts";
 import { getDocumentTypeLabel } from "../../lib/constants.ts";
+import { planCaseDetailsUpdate } from "../../lib/cases/details.ts";
 import { extractCaseDocument } from "./document-extraction-provider.ts";
 import { findOwnedCase, findOwnedCaseNote, loadOwnedCase } from "./authz.server.ts";
 import {
@@ -51,6 +53,7 @@ import type {
   SaveManualExtractedFieldsInput,
   SaveCaseDraftInput,
   SubmitCaseForReviewInput,
+  UpdateCaseDetailsInput,
 } from "./validation.ts";
 
 const FINALIZE_CASE_REQUIREMENT_EVALUATION_RPC = "finalize_case_requirement_evaluation";
@@ -122,7 +125,11 @@ const persistDraftMutation = async (
   const { error } = await context.supabase
     .from("cases")
     .update(buildDraftMutation(input))
-    .eq("id", caseId);
+    .eq("id", caseId)
+    .eq("user_id", context.userId)
+    .eq("status", "draft")
+    .select("id")
+    .single();
 
   if (error) {
     throw new Error(error.message);
@@ -992,11 +999,49 @@ export const updateCaseDraft = async (
   context: CaseWorkflowContext,
   input: SaveCaseDraftInput & { caseId: string },
 ) => {
-  await loadOwnedCase(context, input.caseId);
+  const caseData = await loadOwnedCase(context, input.caseId);
+  if (caseData.status !== "draft") {
+    throw new Error(
+      "Only draft cases can be saved through the setup flow. Edit internship details from the case instead.",
+    );
+  }
   await assertActiveSchoolSelection(context, input);
   await persistDraftMutation(context, input.caseId, input);
 
   return { caseId: input.caseId };
+};
+
+export const updateCaseDetails = async (
+  context: CaseWorkflowContext,
+  input: UpdateCaseDetailsInput,
+) => {
+  const state = await loadCaseEvaluationState(context, input.caseId);
+  if (state.caseData.updated_at !== input.expectedUpdatedAt) {
+    throw new Error("This case changed since you opened it. Reload the case before saving.");
+  }
+  const details = {
+    employer_name: input.employerName,
+    role_title: input.roleTitle,
+    work_location: input.workLocation,
+    start_date: input.startDate,
+    end_date: input.endDate,
+    case_summary: input.caseSummary,
+  };
+  const plan = planCaseDetailsUpdate({ ...state, details });
+  const { error } = await context.supabase.rpc("update_case_details", {
+    p_case_id: input.caseId,
+    p_expected_updated_at: input.expectedUpdatedAt,
+    p_details: details,
+    p_next_status: plan.status,
+    p_requirements: buildRequirementPayload(plan.requirements),
+  });
+  if (error) {
+    throw normalizeCaseWorkflowDatabaseError(error, {
+      operationLabel: "Case details update",
+      fallbackMessage: "Unable to save internship details.",
+    });
+  }
+  return { caseId: input.caseId, status: plan.status, needsReapproval: plan.needsReapproval };
 };
 
 export const saveCaseDraft = async (context: CaseWorkflowContext, input: SaveCaseDraftInput) => {
@@ -1394,6 +1439,15 @@ export const submitCaseForReview = async (
   });
 
   await reconcileCaseDocumentReevaluationForSubmission(context, caseData, templateConfig);
+
+  const { data: requirements, error: requirementError } = await context.supabase
+    .from("case_requirements")
+    .select("*")
+    .eq("case_id", input.caseId);
+  if (requirementError) throw new Error(requirementError.message);
+  if (!summarizeRequirementRows(requirements ?? []).readyForSubmission) {
+    throw new Error("Resolve all blocker requirements before submitting this case for review.");
+  }
 
   const nextStatus = assertValidCaseStatusTransition(previousStatus, "submitted");
 

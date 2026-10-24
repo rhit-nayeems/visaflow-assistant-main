@@ -1,16 +1,17 @@
 # VisaFlow
 
-Documentation reviewed: 2026-10-20 against main at 71fa5b1. Commands below run from
-visaflow-assistant-main/, not the repository root. Student CPT is the v1 scope; existing
-reviewer/admin and optional extraction features are extensions. See PROJECT_STATUS.md
-for committed behavior, unpublished local work, and live verification limits.
+Live app: [VisaFlow](https://visaflow-assistant.ledgerly-benefits.workers.dev), published on
+2026-10-08. Public pages and the guest dashboard redirect were verified; the selected Supabase
+backend still needs restoration, matching configuration, migrations, and authenticated checks.
+Documentation synchronized on 2026-10-11; test/deployment evidence is from 2026-10-08.
 
 A CPT (Curricular Practical Training) workflow and case-management platform for
 international students and their school reviewers. Students assemble a case (employment
 details + supporting documents), a **deterministic requirements engine** derives the case
 status across a 10-state lifecycle, and **school-admin reviewers** approve / deny / request
 changes through an audited, database-enforced decision path scoped to the schools they are
-assigned to.
+assigned to. Student CPT workflows are the v1 scope; the existing reviewer/admin and optional
+extraction-provider features are extensions rather than new v1 commitments.
 
 > Full design docs: [`ARCHITECTURE.md`](./ARCHITECTURE.md) (Mermaid diagrams of the runtime,
 > data model, and lifecycles) and [`PROJECT_STATUS.md`](./PROJECT_STATUS.md) (current status,
@@ -42,7 +43,7 @@ npm install
 
 ### Configure environment
 
-For a fresh environment, copy the example and fill in matching browser/server Supabase values. Preserve an existing configuration; use the actual local Vite origin for auth redirects:
+Copy the example file and fill in your Supabase values:
 
 ```bash
 cp .env.example .env
@@ -92,17 +93,18 @@ npm run dev        # start the Vite dev server
 
 ## Scripts
 
-| Script               | Description                                                  |
-| -------------------- | ------------------------------------------------------------ |
-| `npm run dev`        | Start the dev server                                         |
-| `npm run build`      | Production build + type-check (`vite build && tsc --noEmit`) |
-| `npm run preview`    | Preview the production build                                 |
-| `npm run typecheck`  | Type-check only (`tsc --noEmit`)                             |
-| `npm test`           | Run the full test suite (Node test runner)                   |
-| `npm run test:cases` | Run only the `src/server/cases` suite                        |
-| `npm run lint`       | ESLint                                                       |
-| `npm run format`     | Prettier (write)                                             |
-| `npm run deploy`     | Build and deploy to Cloudflare Workers                       |
+| Script                  | Description                                                                                |
+| ----------------------- | ------------------------------------------------------------------------------------------ |
+| `npm run dev`           | Start the dev server                                                                       |
+| `npm run build`         | Production build + type-check (`vite build && tsc --noEmit`)                               |
+| `npm run preview`       | Preview the production build                                                               |
+| `npm run typecheck`     | Type-check only (`tsc --noEmit`)                                                           |
+| `npm test`              | Run the full test suite (Node test runner)                                                 |
+| `npm run test:database` | Apply all migrations and test real PostgreSQL behavior with PGlite; Docker is not required |
+| `npm run test:cases`    | Run only the `src/server/cases` suite                                                      |
+| `npm run lint`          | ESLint                                                                                     |
+| `npm run format`        | Prettier (write)                                                                           |
+| `npm run deploy`        | Build and deploy to Cloudflare Workers                                                     |
 
 ## Testing
 
@@ -117,9 +119,37 @@ transitions, document registration/extraction lifecycle, manual extracted-field 
 (including atomic-RPC rollback), reviewer decisions and school-scoping, database-error
 normalization, and auth-redirect/URL helpers.
 
-Current main has 87 passing tests (2026-10-20). Tests mock Supabase/provider boundaries;
-they do not apply SQL migrations or run Auth/Storage services. There is no test:database
-script or browser/component suite in main. See REPO_AUDIT.md for verification details.
+The database suite applies every migration to an isolated PostgreSQL engine with a minimal
+Supabase auth/storage fixture. It verifies ownership, invalid transitions, stale-write rejection,
+atomic history rollback, and the server edit workflow against the actual SQL RPC. It does not
+replace a live Supabase Auth/Storage browser check.
+
+## V1 case editing and revalidation
+
+Students can edit internship details from the case overview while the case is editable.
+Changing employer, work location, start date, or end date on an approved case moves it to
+`change_pending`. The update, requirement evaluation, timeline, and field audit entries are
+committed together. Submitted, denied, and completed cases cannot use this edit flow.
+Concurrent edits report a conflict instead of overwriting the newer record.
+
+The default template requires reviewed offer-letter employer, job title, start date, end date,
+and job duties. Populating the case form alone does not satisfy missing letter fields. Warnings
+remain separate from blockers. A case needs satisfied blockers before submission, including
+resubmission after approval-sensitive changes.
+
+Apply `20261008214723_complete_v1_case_editing_and_revalidation.sql` along with the preceding
+migrations. It adds the atomic edit RPC and database guards, extends the default school template,
+and blocks existing ready cases that lack the newly required letter fields. Custom templates
+and previously approved/submitted cases keep their existing requirements until reevaluation.
+The temporary additive RPC type is in `src/integrations/supabase/workflow-schema.ts`; regenerate
+the underlying Supabase types after applying the migration to the hosted database.
+
+The authorized hosted target is `visaflow-assistant` (`cryimllpsevwelcsagih`). Restore it, verify
+its migration history, and run `supabase db push --linked` from this application directory.
+Then obtain that project's publishable key and set both browser and server URL/key pairs in
+`.env` to the same project. The existing `.env` points to a different project and is not a
+verified v1 environment. At the last live check, restoration was blocked by Supabase's free-project limit;
+no other project has been paused to resolve that limit.
 
 ## Project structure
 
@@ -138,14 +168,20 @@ supabase/migrations/        # Schema, RLS policies, atomic RPCs
 The app targets Cloudflare Workers (see [`wrangler.jsonc`](./wrangler.jsonc)):
 
 ```bash
-npm run deploy
+npm run build
+npx wrangler deploy --keep-vars
 ```
 
-See [DEPLOY-CLOUDFLARE.md](./DEPLOY-CLOUDFLARE.md) for build-time versus runtime
-settings, redirect configuration, and the post-deployment checklist. The service-role
-helper is unused by application flows; its key is optional and server-only.
+Configure runtime bindings separately from browser build-time variables. See
+[DEPLOY-CLOUDFLARE.md](./DEPLOY-CLOUDFLARE.md) for first-deployment settings, safe credential
+handling, auth redirects, and the remaining backend release checks.
 
 ## CI
 
 GitHub Actions runs lint, type-check, and the test suite on every push and pull request to
 `main` (see [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) at the repository root).
+
+
+## Main reconciliation - 2026-10-24
+
+The previously local case editor, atomic edit/revalidation migration, required offer-letter fields, dashboard/deadline helpers, and PostgreSQL tests are now included in main. Existing reviewer/admin, notification, and optional extraction-provider work is preserved. The full suite passes 117 tests after a clean dependency installation. Earlier deployment, account-limit, and browser observations above are historical; no hosted migration, deployment, or authenticated Auth/Storage check was performed in this reconciliation.

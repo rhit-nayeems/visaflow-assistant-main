@@ -61,11 +61,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Progress } from "@/components/ui/progress";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { SeverityBadge } from "@/components/shared/SeverityBadge";
 import { AlertBanner } from "@/components/shared/AlertBanner";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { TimelineItem } from "@/components/shared/TimelineItem";
+import { CaseDetailsEditor } from "./CaseDetailsEditor";
+import { daysUntilCaseStart, isUpcomingCaseDeadline } from "@/lib/cases/summary";
 
 type Case = Tables<"cases">;
 type Document = Tables<"documents">;
@@ -124,6 +127,7 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
   const [notes, setNotes] = useState<CaseNote[]>([]);
   const [templateConfig, setTemplateConfig] = useState<unknown>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [newNote, setNewNote] = useState("");
   const [noteLoading, setNoteLoading] = useState(false);
   const [noteError, setNoteError] = useState("");
@@ -181,6 +185,18 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
         .eq("case_id", caseId)
         .order("created_at", { ascending: false }),
     ]);
+    const loadFailure =
+      caseRes.error ??
+      docsRes.error ??
+      reqsRes.error ??
+      tlRes.error ??
+      auditRes.error ??
+      notesRes.error;
+    if (loadFailure) {
+      setLoadError(loadFailure.message);
+      setLoading(false);
+      return;
+    }
     const extractedFieldsRes =
       (docsRes.data?.length ?? 0) > 0
         ? await supabase
@@ -190,7 +206,7 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
               "document_id",
               (docsRes.data ?? []).map((document) => document.id),
             )
-        : { data: [] as ExtractedField[] };
+        : { data: [] as ExtractedField[], error: null };
     const caseRecord = caseRes.data;
     const templateRes = caseRecord?.school_template_id
       ? await supabase
@@ -198,7 +214,14 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
           .select("config_json")
           .eq("id", caseRecord.school_template_id)
           .maybeSingle()
-      : { data: null };
+      : { data: null, error: null };
+    const relatedFailure = extractedFieldsRes.error ?? templateRes.error;
+    if (relatedFailure) {
+      setLoadError(relatedFailure.message);
+      setLoading(false);
+      return;
+    }
+    setLoadError("");
 
     setCaseData(caseRecord);
     setDocuments(docsRes.data || []);
@@ -532,6 +555,15 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
     );
   }
 
+  if (loadError)
+    return (
+      <div className="p-6 space-y-3">
+        <AlertBanner variant="error" title="Case could not load" description={loadError} />
+        <Button variant="outline" onClick={() => void load()}>
+          Retry
+        </Button>
+      </div>
+    );
   if (!caseData) {
     return (
       <EmptyState
@@ -633,7 +665,9 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
   const canResubmitForReview = caseData.status === "change_pending";
   const needsDocumentReevaluation = caseData.needs_document_reevaluation;
   const canSubmitForReview =
-    (isReadyForSubmission || canResubmitForReview) && !hasBlockingLatestExtractions;
+    (isReadyForSubmission || canResubmitForReview) &&
+    requirementSummary.readyForSubmission &&
+    !hasBlockingLatestExtractions;
   const submitButtonLabel = canResubmitForReview ? "Resubmit for review" : "Submit for review";
   const submitHelperText = (() => {
     if (latestRetryableExtractions.length > 0) {
@@ -747,7 +781,7 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
         <AlertBanner
           variant="warning"
           title="Changes pending"
-          description="Your case needs another review cycle. Review the timeline and audit log, update the case, and resubmit when ready."
+          description="Your case needs another review cycle. Check the timeline for changed employment details or reviewer feedback, update supporting documents, resolve blockers, and resubmit when ready."
         />
       )}
       {blockers.length > 0 && !isChangePending && (
@@ -766,7 +800,7 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
             .map((document) => getDocumentTypeLabel(document.document_type))
             .join(
               ", ",
-            )}. This build uses a local text-pattern extractor, so unsupported or unreadable files stay blocked until you retry or explicitly clear the case with reevaluation.`}
+            )}. If extraction cannot read your file, enter and review its required fields manually in the Documents tab before submission.`}
         />
       )}
       {latestRetryablePendingExtractions.length > 0 && (
@@ -875,7 +909,7 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
         <AlertBanner variant="success" title="Case submitted" description={submitNotice} />
       )}
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         {[
           {
             icon: AlertCircle,
@@ -892,13 +926,14 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
           { icon: FileText, label: "Documents", value: documents.length, color: "text-primary" },
           {
             icon: Clock,
+            label: "Upcoming deadlines",
+            value: isUpcomingCaseDeadline(caseData) ? 1 : 0,
+            color: "text-warning",
+          },
+          {
+            icon: Clock,
             label: "Days to start",
-            value: caseData.start_date
-              ? Math.max(
-                  0,
-                  Math.ceil((new Date(caseData.start_date).getTime() - Date.now()) / 86400000),
-                )
-              : "-",
+            value: daysUntilCaseStart(caseData.start_date) ?? "-",
             color: "text-muted-foreground",
           },
         ].map((stat) => (
@@ -912,6 +947,26 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
         ))}
       </div>
 
+      {requirements.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-sm text-muted-foreground">
+            {
+              requirements.filter((item) => item.status === "met" || item.status === "waived")
+                .length
+            }{" "}
+            of {requirements.length} requirements satisfied
+          </p>
+          <Progress
+            aria-label="Requirements satisfied"
+            value={
+              (100 *
+                requirements.filter((item) => item.status === "met" || item.status === "waived")
+                  .length) /
+              requirements.length
+            }
+          />
+        </div>
+      )}
       <Tabs defaultValue="overview">
         <TabsList className="w-full justify-start">
           <TabsTrigger value="overview">Overview</TabsTrigger>
@@ -956,6 +1011,7 @@ export function CaseDetailPage({ caseId }: CaseDetailProps) {
                   <p className="mt-1 text-sm">{caseData.case_summary}</p>
                 </div>
               )}
+              <CaseDetailsEditor caseData={caseData} onSaved={load} />
             </CardContent>
           </Card>
         </TabsContent>

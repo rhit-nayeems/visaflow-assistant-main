@@ -73,7 +73,8 @@ export function CreateCaseWizard() {
       .select("*")
       .eq("active", true)
       .order("name")
-      .then(({ data }) => {
+      .then(({ data, error }) => {
+        if (error) setError(error.message);
         setSchools(data || []);
       });
   }, []);
@@ -94,7 +95,8 @@ export function CreateCaseWizard() {
       .eq("school_id", selectedSchoolId)
       .eq("is_active", true)
       .order("version", { ascending: false })
-      .then(({ data }) => {
+      .then(({ data, error }) => {
+        if (error) setError(error.message);
         setTemplates(data || []);
         if (data && data.length === 1) {
           setSelectedTemplateId(data[0].id);

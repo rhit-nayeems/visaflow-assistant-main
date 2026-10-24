@@ -4,7 +4,7 @@
 // For user-authenticated queries (with RLS), use the auth middleware instead.
 import { createClient } from "@supabase/supabase-js";
 import { normalizeSupabaseUrl } from "./url";
-import type { Database } from "./types";
+import type { Database } from "./workflow-schema";
 
 function createSupabaseAdminClient() {
   const SUPABASE_URL = process.env.SUPABASE_URL;

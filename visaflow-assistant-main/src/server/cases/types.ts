@@ -1,10 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type {
-  Database,
-  Tables,
-  TablesInsert,
-  TablesUpdate,
-} from "../../integrations/supabase/types.ts";
+import type { Tables, TablesInsert, TablesUpdate } from "../../integrations/supabase/types.ts";
+import type { Database } from "../../integrations/supabase/workflow-schema.ts";
 
 export type CaseSupabaseClient = SupabaseClient<Database>;
 

@@ -1,70 +1,53 @@
-# VisaFlow project status
+# VisaFlow — Project Status
 
-Reviewed: 2026-10-20 against main at 71fa5b1 and this documentation update.
-See [REPO_AUDIT.md](./REPO_AUDIT.md) for current verification results.
+Last updated: 2026-10-08.
 
-## Implemented in main
+Documentation synchronized: 2026-10-11. Verification and deployment results below are from
+2026-10-08; this documentation pass did not rerun live backend or account-status checks.
 
-The student CPT workflow includes email/password authentication, recovery and OAuth callback
-handling, protected routes, case creation, document uploads/version registration, deterministic
-requirement evaluation, submission/resubmission, notes, timeline, and audit displays.
-Supabase reads use RLS; case server functions validate inputs and use authenticated,
-user-scoped clients. Reviewer decisions and manual extracted-field review use atomic SQL RPCs.
+Public deployment: [VisaFlow](https://visaflow-assistant.ledgerly-benefits.workers.dev).
+Cloudflare version `7ad270f5-1091-460b-abf3-e90f73428a4b` was published on 2026-10-08.
+The public landing page and guest dashboard-to-login redirect were verified in Chrome.
+The deployment preserves the existing Supabase URL/key pair; connection to the selected
+paused project and hosted migrations remain pending.
 
-The default template requires an offer letter, employer, job title, job duties, dates,
-advisor approval, course registration, and a lead-time warning. Employer/title/dates are
-currently case-field requirements; job duties is an extracted offer-letter field.
-Warnings remain separate from blockers.
+VisaFlow is a student CPT workflow platform built with React, TanStack Start, Cloudflare Workers, and Supabase. The current v1 implementation has deterministic school-template requirements, private document handling, case transitions, history, and approved-change revalidation.
 
-Existing extensions include school-assigned reviewer queues and decisions, platform-admin
-reviewer assignment/revocation, a first-admin bootstrap path, and case-status notifications.
-These do not expand the student v1 contract in [SPEC.md](./SPEC.md).
-The notification bell uses Realtime plus focus and 60-second polling fallbacks; email
-and document-expiry reminders are deferred.
+## Current verification
 
-## Extraction
+- 117 automated tests passed, including real PostgreSQL migration/RPC tests with PGlite.
+- Production build and TypeScript passed; lint has zero errors and seven existing Fast Refresh warnings.
+- Dependency audit reports zero vulnerabilities.
+- The landing page and signed-out dashboard redirect were verified in Chrome.
+- Hosted Auth/Storage and authenticated browser flows remain pending. The selected `visaflow-assistant` project is paused; Supabase rejected restoration due to the two-active-free-project limit. Docker Desktop failed to start, preventing a local Supabase service check.
 
-Without ANTHROPIC_API_KEY, extraction uses the local text-pattern stub, which does not
-provide real OCR for scanned/binary documents. Manual field review and retry handling exist.
-With a key, the optional Anthropic Messages provider sends native PDF/image content or text
-and requests structured CPT fields. Its configured default model is claude-haiku-4-5,
-overridable with ANTHROPIC_EXTRACTION_MODEL. Tests mock provider network responses;
-they do not establish live extraction accuracy or deployed credential configuration.
+The existing environment points to a different Supabase project. It was preserved rather than pairing a new project URL with an unrelated key. No unrelated project has been paused.
 
-## Remaining student v1 work
+## V1 behavior
 
-The shared status module detects sensitive approved changes, but main has no dedicated
-internship-details editor or atomic edit/revalidation RPC that exercises that rule.
-End-to-end approved employer/location/date revalidation is therefore incomplete.
-Case details show blockers, warnings, next action, documents, and days to start; dashboard
-counts and some error handling still need hardening and targeted verification.
+Students create CPT cases against the default school template, supply internship details and documents, and resolve evaluated blockers. Warnings do not block readiness. The default offer letter must contain reviewed employer, job title, start/end dates, and job duties.
 
-The original working directory contains unpublished work for an editor, stronger required
-letter fields, shared dashboard/deadline summaries, and PostgreSQL migration tests, including
-20261008214723_complete_v1_case_editing_and_revalidation.sql. Those files are absent from
-the audited main revision. This documentation update does not publish them or count their
-117-test report as main's verification. Review and commit that work separately.
+An internship-details editor calls an authenticated server workflow and atomic database RPC. Approved changes to employer, work location, start date, or end date cause `change_pending` and create field audit entries and timeline guidance. Non-sensitive edits retain approval; submitted, denied, and completed cases reject edits. Optimistic version checks reject stale saves. Submission checks both blocker readiness and unresolved document reevaluation.
 
-## Backend and release verification
+The dashboard and case header show actionable counts, upcoming internship starts, progress, and clear next actions. Error states distinguish failed data operations from empty results. Existing reviewer/admin features remain in the codebase and are outside the narrow student v1 completion scope.
 
-There are 18 checked-in SQL migrations, through 20260610130000_bootstrap_platform_admin.sql.
-Migration files describe intended database state; they do not prove a hosted project has
-applied it. Main has no test:database script or isolated PostgreSQL migration suite.
-Server tests largely use mocked Supabase clients.
+## Database change
 
-Prior local release notes recorded a public Worker publication on 2026-10-08 at
-[VisaFlow](https://visaflow-assistant.ledgerly-benefits.workers.dev), with public-page and
-guest redirect verification. They also recorded a failed restoration of the selected
-visaflow-assistant backend (cryimllpsevwelcsagih) due to the free-project limit and a failed
-Docker Desktop startup. These are historical observations, not fresh service-status checks.
-This audit did not restore a project, deploy, inspect hosted migrations, or run authenticated
-browser/Auth/Storage flows.
+`supabase/migrations/20261008214723_complete_v1_case_editing_and_revalidation.sql` adds the edit RPC, transactional history, ownership/lifecycle guards, and four additional required offer-letter fields to the default template. It backfills pending fields for pre-submission/change-pending default cases and invalidates stale ready cases. The database suite applies all migrations and tests these behaviors, including rollback and authorization.
 
-Before calling v1 release-ready, finish the missing edit flow, confirm the intended backend,
-inspect/apply migrations, align browser/server settings and redirects, and verify signup,
-recovery, case creation/list/detail, actual uploads/downloads, review, submission, and
-approved-change revalidation. Use [TASKS.md](./TASKS.md) for the checklist.
+Apply migrations to the restored hosted project before using the editor. Regenerate the generated Supabase types afterward; `src/integrations/supabase/workflow-schema.ts` provides the additive RPC type until then.
 
-OPT/STEM OPT, SEVIS, broad chatbot/legal advice, advisor/employer portals, and email automation
-remain outside v1. Historical portfolio images are explained in their
-[README](./public/projects/visaflow/README.md).
+## Extraction and scope
+
+Default extraction is local text-pattern/stub behavior with manual field review. Real OCR is not implemented in v1. An optional Anthropic provider already exists, but no provider key was configured or live extraction verified. OPT, STEM OPT, SEVIS, legal advice, broad chatbot behavior, email automation, and new portals remain outside v1 scope.
+
+## Release follow-through
+
+Restore the selected hosted project after resolving the free-project limit, inspect/apply migration history, align browser and server environment values, configure auth redirects, and verify live signup/login, authenticated pages, uploads, submission, and reapproval. These are release blockers rather than unfinished local workflow code.
+
+See the root [REPO_AUDIT.md](../REPO_AUDIT.md), [TASKS.md](../TASKS.md), and application [README.md](./README.md) for details and commands. Root npm scripts delegate to this application; dependencies are maintained here.
+
+
+## Main reconciliation - 2026-10-24
+
+The previously local case editor, atomic edit/revalidation migration, required offer-letter fields, dashboard/deadline helpers, and PostgreSQL tests are now included in main. Existing reviewer/admin, notification, and optional extraction-provider work is preserved. The full suite passes 117 tests after a clean dependency installation. Earlier deployment, account-limit, and browser observations above are historical; no hosted migration, deployment, or authenticated Auth/Storage check was performed in this reconciliation.
